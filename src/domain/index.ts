@@ -5,7 +5,7 @@ export { Estacionamento } from './Estacionamento'
 export { Notificacao, type TipoNotificacao } from './Notificacao'
 export { Pagamento, type StatusPagamento } from './Pagamento'
 export { Reserva, type StatusReserva } from './Reserva'
-export { Sensor } from './Sensor'
+export { Sensor, type EventoSensor } from './Sensor'
 export { Tarifa } from './Tarifa'
 export { Usuario, type TipoUsuario } from './Usuario'
 export { Vaga, type StatusVaga, type TipoVaga } from './Vaga'
@@ -43,3 +43,19 @@ export { VarianteCondominio } from './factories/variante/VarianteCondominio'
 export { VarianteEmpresa } from './factories/variante/VarianteEmpresa'
 export { VarianteHospital } from './factories/variante/VarianteHospital'
 export { VarianteShopping } from './factories/variante/VarianteShopping'
+
+// Observer — infraestrutura comum
+export type { Observador } from './observer/Observador'
+export { Observable } from './observer/Observable'
+
+// Observer — Exemplo 1: sensor (o Subject é a classe Sensor)
+export { ObservadorNotificacaoSensor } from './observer/sensor/ObservadorNotificacaoSensor'
+export { ObservadorVagaSensor } from './observer/sensor/ObservadorVagaSensor'
+
+// Observer — Exemplo 2: reservas
+export { EventosReserva, type EventoReserva } from './observer/reserva/EventosReserva'
+export { ObservadorNotificacaoReserva } from './observer/reserva/ObservadorNotificacaoReserva'
+export { ObservadorVagaReserva } from './observer/reserva/ObservadorVagaReserva'
+
+// Observer — montagem por variante (feature flag notifications)
+export { criarEventosReserva, registrarObservadoresSensor } from './observer/registrarObservadores'

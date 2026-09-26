@@ -1,8 +1,21 @@
+import { Observable } from './observer/Observable'
+
+/** Evento emitido pelo Sensor quando a presença de veículo muda. */
+export interface EventoSensor {
+  tipo: 'ocupada' | 'liberada'
+  codigoSensor: string
+  vagaId: string
+  momento: Date
+}
+
 /**
  * Sensor instalado em uma vaga que detecta a presença de um veículo.
  * No protótipo as leituras são simuladas, mas as regras são as mesmas de um sensor real.
+ *
+ * OBSERVER — Exemplo 1: o Sensor é o Subject. Quando o estado muda,
+ * ele notifica os observadores inscritos, sem conhecer quem são.
  */
-export class Sensor {
+export class Sensor extends Observable<EventoSensor> {
   id: string
   codigo: string
   vagaId: string
@@ -11,6 +24,7 @@ export class Sensor {
   ultimaLeitura: Date | null
 
   constructor(id: string, codigo: string, vagaId: string, ativo = true) {
+    super()
     this.id = id
     this.codigo = codigo
     this.vagaId = vagaId
@@ -44,6 +58,11 @@ export class Sensor {
     const mudou = this.ocupado !== ocupado
     this.ocupado = ocupado
     this.ultimaLeitura = momento
+
+    // Só avisa os observadores quando o estado realmente muda.
+    if (mudou) {
+      this.notificar({ tipo: ocupado ? 'ocupada' : 'liberada', codigoSensor: this.codigo, vagaId: this.vagaId, momento })
+    }
     return mudou
   }
 }
