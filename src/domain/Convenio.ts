@@ -1,4 +1,4 @@
-import type { Tarifa } from './Tarifa'
+import type { EstrategiaTarifa } from './strategies/tarifa/EstrategiaTarifa'
 
 export type TipoBeneficio = 'isencao' | 'percentual' | 'horasGratis'
 
@@ -22,7 +22,7 @@ export class Convenio {
   }
 
   /** Valor final do estacionamento depois do benefício. */
-  aplicarBeneficio(tarifa: Tarifa, duracaoHoras: number): number {
+  aplicarBeneficio(tarifa: EstrategiaTarifa, duracaoHoras: number): number {
     if (!this.ativo) return tarifa.calcular(duracaoHoras)
     if (this.tipoBeneficio === 'isencao') return 0
     if (this.tipoBeneficio === 'percentual') return tarifa.calcular(duracaoHoras) * (1 - this.valorBeneficio / 100)

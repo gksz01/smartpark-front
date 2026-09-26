@@ -1,30 +1,53 @@
-// Mesmas formas oferecidas hoje na tela de pagamento.
-export type FormaPagamento = 'Pix' | 'Crédito' | 'Débito'
+import type { EstrategiaPagamento, FormaPagamento } from './strategies/pagamento/EstrategiaPagamento'
+
 export type StatusPagamento = 'pendente' | 'aprovado' | 'estornado'
 
-/** Pagamento do período de estacionamento de um veículo. */
+/**
+ * STRATEGY — Context do exemplo de pagamento.
+ *
+ * O Pagamento cuida das regras comuns (status, valor, comprovante)
+ * e delega o processamento para a EstrategiaPagamento escolhida
+ * (Pix, Crédito ou Débito), sem saber qual é.
+ */
 export class Pagamento {
   id: string
   valor: number
-  forma: FormaPagamento
+  estrategia: EstrategiaPagamento
   veiculoId: string
   reservaId?: string
   status: StatusPagamento
+  valorCobrado: number
+  detalhe: string
   comprovante: string
   criadoEm: Date
 
-  constructor(id: string, valor: number, forma: FormaPagamento, veiculoId: string, reservaId?: string, criadoEm: Date = new Date()) {
+  constructor(id: string, valor: number, estrategia: EstrategiaPagamento, veiculoId: string, reservaId?: string, criadoEm: Date = new Date()) {
     this.id = id
     this.valor = valor
-    this.forma = forma
+    this.estrategia = estrategia
     this.veiculoId = veiculoId
     this.reservaId = reservaId
     this.status = 'pendente'
+    this.valorCobrado = 0
+    this.detalhe = ''
     this.comprovante = ''
     this.criadoEm = criadoEm
   }
 
-  /** Pagamento simulado: aprova e emite o comprovante. */
+  /** Forma de pagamento da estratégia atual. */
+  get forma(): FormaPagamento {
+    return this.estrategia.forma
+  }
+
+  /** A forma de pagamento só pode ser trocada antes do processamento. */
+  definirEstrategia(estrategia: EstrategiaPagamento): void {
+    if (this.status !== 'pendente') {
+      throw new Error('Não é possível trocar a forma de um pagamento já processado.')
+    }
+    this.estrategia = estrategia
+  }
+
+  /** Pagamento simulado: a estratégia processa e o Pagamento aprova e emite o comprovante. */
   processar(): void {
     if (this.status !== 'pendente') {
       throw new Error('Este pagamento já foi processado.')
@@ -32,6 +55,9 @@ export class Pagamento {
     if (this.valor <= 0) {
       throw new Error('O valor do pagamento deve ser maior que zero.')
     }
+    const resultado = this.estrategia.processar(this.valor)
+    this.valorCobrado = resultado.valorCobrado
+    this.detalhe = resultado.detalhe
     this.status = 'aprovado'
     this.comprovante = this.gerarComprovante()
   }
@@ -43,9 +69,9 @@ export class Pagamento {
     this.status = 'estornado'
   }
 
-  /** Código no mesmo formato já exibido pelo protótipo (SPK-XXXXXX). */
+  /** O prefixo identifica a forma de pagamento: PIX-, CRE- ou DEB-. */
   gerarComprovante(): string {
-    return `SPK-${this.id.replace(/-/g, '').slice(0, 6).toUpperCase()}`
+    return `${this.estrategia.prefixoComprovante}-${this.id.replace(/-/g, '').slice(0, 6).toUpperCase()}`
   }
 
   estaAprovado(): boolean {

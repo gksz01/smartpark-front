@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { Acesso, Atendimento, Convenio, Estacionamento, Notificacao, Pagamento, Reserva, Sensor, Tarifa, Usuario, Vaga, Veiculo } from '.'
+import { Acesso, Atendimento, Convenio, Estacionamento, Notificacao, Pagamento, PagamentoCredito, PagamentoDebito, PagamentoPix, Reserva, Sensor, Tarifa, TarifaPorHora, Usuario, Vaga, Veiculo } from '.'
 
 describe('Usuario', () => {
   it('usa a matriz de permissões existente', () => {
@@ -107,21 +107,21 @@ describe('Estacionamento', () => {
 
 describe('Tarifa', () => {
   it('cobra por hora iniciada', () => {
-    const tarifa = new Tarifa('t-1', 'Padrão', 12)
+    const tarifa = new Tarifa('t-1', 'Padrão', new TarifaPorHora(12))
     expect(tarifa.calcular(2)).toBe(24)
     expect(tarifa.calcular(2.2)).toBe(36)
     expect(tarifa.calcular(0)).toBe(0)
   })
 
   it('respeita o valor máximo diário', () => {
-    const tarifa = new Tarifa('t-1', 'Padrão', 12, 60)
+    const tarifa = new Tarifa('t-1', 'Padrão', new TarifaPorHora(12, 60))
     expect(tarifa.calcular(8)).toBe(60)
     expect(tarifa.descricao()).toBe('Padrão: R$ 12,00/hora (máx. R$ 60,00/dia)')
   })
 })
 
 describe('Reserva', () => {
-  const tarifa = new Tarifa('t-1', 'Padrão', 12)
+  const tarifa = new Tarifa('t-1', 'Padrão', new TarifaPorHora(12))
 
   it('calcula a estimativa com a tarifa', () => {
     const reserva = new Reserva('r-1', 'v-1', 'A-03', '2026-09-05', '18:30', 2)
@@ -155,21 +155,21 @@ describe('Reserva', () => {
 
 describe('Pagamento', () => {
   it('processa, gera comprovante e estorna', () => {
-    const pagamento = new Pagamento('a1b2c3d4-0000', 28, 'Pix', 'v-1')
+    const pagamento = new Pagamento('a1b2c3d4-0000', 28, new PagamentoPix(), 'v-1')
     pagamento.processar()
     expect(pagamento.estaAprovado()).toBe(true)
-    expect(pagamento.comprovante).toBe('SPK-A1B2C3')
+    expect(pagamento.comprovante).toBe('PIX-A1B2C3')
     expect(pagamento.valorFormatado()).toBe('R$ 28,00')
     pagamento.estornar()
     expect(pagamento.status).toBe('estornado')
   })
 
   it('impede processamento duplicado, valor zero e estorno sem aprovação', () => {
-    const pagamento = new Pagamento('p-1', 28, 'Crédito', 'v-1')
+    const pagamento = new Pagamento('p-1', 28, new PagamentoCredito(), 'v-1')
     expect(() => pagamento.estornar()).toThrow('Apenas pagamentos aprovados')
     pagamento.processar()
     expect(() => pagamento.processar()).toThrow('já foi processado')
-    expect(() => new Pagamento('p-2', 0, 'Débito', 'v-1').processar()).toThrow('maior que zero')
+    expect(() => new Pagamento('p-2', 0, new PagamentoDebito(), 'v-1').processar()).toThrow('maior que zero')
   })
 })
 
@@ -215,7 +215,7 @@ describe('Sensor', () => {
 })
 
 describe('Convenio', () => {
-  const tarifa = new Tarifa('t-1', 'Hospital', 10)
+  const tarifa = new Tarifa('t-1', 'Hospital', new TarifaPorHora(10))
 
   it('aplica cada tipo de benefício', () => {
     expect(new Convenio('c-1', 'Saúde Plena', 'isencao').aplicarBeneficio(tarifa, 3)).toBe(0)
