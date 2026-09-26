@@ -1,10 +1,15 @@
 import type { ParkingSpace } from '../core/types'
 
-// Reaproveita os mesmos tipos e status usados hoje na tela de Vagas.
-export type TipoVaga = ParkingSpace['type']
+// Reaproveita os tipos e status usados hoje na tela de Vagas.
+// 'Prioritária' é o tipo exclusivo do Hospital (pacientes e acompanhantes).
+export type TipoVaga = ParkingSpace['type'] | 'Prioritária'
 export type StatusVaga = ParkingSpace['status']
 
-/** Uma vaga física do estacionamento e o seu estado atual. */
+/**
+ * Uma vaga física do estacionamento e o seu estado atual.
+ * É o Product do Factory Method de vagas: as subclasses em domain/vagas/
+ * sobrescrevem requisitoDeUso() e permanenciaMaximaHoras().
+ */
 export class Vaga {
   id: string
   codigo: string
@@ -59,8 +64,23 @@ export class Vaga {
     if (this.status === 'Bloqueada') this.status = 'Livre'
   }
 
-  /** PCD, elétrica, nominal ou restrita. */
+  /** PCD, elétrica, nominal, restrita ou prioritária. */
   ehEspecial(): boolean {
     return this.tipo !== 'Comum'
+  }
+
+  /** Quem pode usar a vaga. As subclasses sobrescrevem. */
+  requisitoDeUso(): string {
+    return 'Sem restrição de uso'
+  }
+
+  /** Tempo máximo de permanência em horas; null significa sem limite. */
+  permanenciaMaximaHoras(): number | null {
+    return null
+  }
+
+  excedeuPermanencia(horas: number): boolean {
+    const maximo = this.permanenciaMaximaHoras()
+    return maximo !== null && horas > maximo
   }
 }

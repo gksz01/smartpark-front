@@ -15,6 +15,7 @@ export { Veiculo } from './Veiculo'
 export type { EstrategiaTarifa } from './strategies/tarifa/EstrategiaTarifa'
 export { TarifaComConvenio } from './strategies/tarifa/TarifaComConvenio'
 export { TarifaFixaDiaria } from './strategies/tarifa/TarifaFixaDiaria'
+export { TarifaIsenta } from './strategies/tarifa/TarifaIsenta'
 export { TarifaPorHora } from './strategies/tarifa/TarifaPorHora'
 
 // Strategy — Exemplo 2: pagamento
@@ -22,3 +23,23 @@ export type { EstrategiaPagamento, FormaPagamento, ResultadoPagamento } from './
 export { PagamentoCredito } from './strategies/pagamento/PagamentoCredito'
 export { PagamentoDebito } from './strategies/pagamento/PagamentoDebito'
 export { PagamentoPix } from './strategies/pagamento/PagamentoPix'
+
+// Factory Method — Exemplo 1: vagas (produtos e creators)
+export { VagaComum } from './vagas/VagaComum'
+export { VagaEletrica } from './vagas/VagaEletrica'
+export { VagaNominal } from './vagas/VagaNominal'
+export { VagaPCD } from './vagas/VagaPCD'
+export { VagaPrioritaria } from './vagas/VagaPrioritaria'
+export { CriadorVaga } from './factories/vaga/CriadorVaga'
+export { CriadorVagaComum } from './factories/vaga/CriadorVagaComum'
+export { CriadorVagaEletrica } from './factories/vaga/CriadorVagaEletrica'
+export { CriadorVagaNominal } from './factories/vaga/CriadorVagaNominal'
+export { CriadorVagaPCD } from './factories/vaga/CriadorVagaPCD'
+export { CriadorVagaPrioritaria } from './factories/vaga/CriadorVagaPrioritaria'
+
+// Factory Method — Exemplo 2: variantes da LPS
+export { VarianteSmartPark } from './factories/variante/VarianteSmartPark'
+export { VarianteCondominio } from './factories/variante/VarianteCondominio'
+export { VarianteEmpresa } from './factories/variante/VarianteEmpresa'
+export { VarianteHospital } from './factories/variante/VarianteHospital'
+export { VarianteShopping } from './factories/variante/VarianteShopping'
