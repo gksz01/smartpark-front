@@ -2,12 +2,12 @@
 import { criarApp } from './app'
 import { CAMINHO_BANCO, PORTA } from './config'
 import { abrirBanco } from './database/conexao'
-import { bancoVazio, popularBanco } from './seed/seed'
+import { popularTabelasVazias } from './seed/seed'
 
 const db = abrirBanco(CAMINHO_BANCO)
-if (bancoVazio(db)) {
-  popularBanco(db)
-  console.log('Banco novo: dados de demonstração inseridos.')
+const populadas = popularTabelasVazias(db)
+if (populadas.length) {
+  console.log(`Dados de demonstração inseridos em: ${populadas.join(', ')}.`)
 }
 
 criarApp(db).listen(PORTA, () => {

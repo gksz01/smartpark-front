@@ -22,6 +22,9 @@ export type Feature =
 
 export type AccessMethod = 'LPR' | 'RFID' | 'QR_CODE' | 'MANUAL'
 
+/** Tipos de pessoa cadastráveis. Cada tenant escolhe os seus em personTypes. */
+export type PersonType = 'motorista' | 'morador' | 'visitante' | 'funcionario' | 'paciente' | 'acompanhante'
+
 export type Permission =
   | 'portal'
   | 'vehicles'
@@ -30,6 +33,7 @@ export type Permission =
   | 'access'
   | 'configuration'
   | 'medicalAgreement'
+  | 'users'
 
 export interface ThemeTokens {
   primary: string
@@ -58,6 +62,7 @@ export interface TenantConfig {
   allowedRoles: Role[]
   theme: ThemeTokens
   vehicleFields: VehicleFieldConfig[]
+  personTypes: PersonType[]
   dashboardCards: DashboardMetricId[]
 }
 
@@ -83,6 +88,16 @@ export interface Vehicle {
   nickname: string
   rfidTag?: string
   unit?: string
+}
+
+/** Pessoa cadastrada no tenant (tabela usuarios). */
+export interface User {
+  id: string
+  name: string
+  document: string
+  type: PersonType
+  role: Role
+  active: boolean
 }
 
 export interface Reservation {

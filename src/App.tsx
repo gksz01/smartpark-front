@@ -3,6 +3,7 @@ import { ProtectedRoute } from './core/gates'
 import { AccessPage, ConfigurationPage, DashboardPage, MedicalAgreementPage, SpacesPage } from './features/admin/AdminPages'
 import { HomePage, ParkingDetailPage, ParkingSearchPage, PaymentsPage, ReservationPage } from './features/parking/PortalPages'
 import { SelectionPage } from './features/selection/SelectionPage'
+import { UsersPage } from './features/users/UsersPage'
 import { VehiclesPage } from './features/vehicles/VehiclesPage'
 import { AdminLayout, PortalLayout } from './shared/layout'
 
@@ -10,7 +11,7 @@ const portal = (page: React.ReactNode, permission: 'portal' | 'vehicles' = 'port
   <ProtectedRoute permission={permission} features={features}><PortalLayout>{page}</PortalLayout></ProtectedRoute>
 )
 
-const admin = (page: React.ReactNode, permission: 'dashboard' | 'spaces' | 'access' | 'configuration' | 'medicalAgreement', features: Parameters<typeof ProtectedRoute>[0]['features'] = []) => (
+const admin = (page: React.ReactNode, permission: 'dashboard' | 'spaces' | 'access' | 'configuration' | 'medicalAgreement' | 'users', features: Parameters<typeof ProtectedRoute>[0]['features'] = []) => (
   <ProtectedRoute permission={permission} features={features}><AdminLayout>{page}</AdminLayout></ProtectedRoute>
 )
 
@@ -26,6 +27,7 @@ export default function App() {
     <Route path="/admin/dashboard" element={admin(<DashboardPage />, 'dashboard')} />
     <Route path="/admin/spaces" element={admin(<SpacesPage />, 'spaces')} />
     <Route path="/admin/access" element={admin(<AccessPage />, 'access')} />
+    <Route path="/admin/users" element={admin(<UsersPage />, 'users')} />
     <Route path="/admin/configuration" element={admin(<ConfigurationPage />, 'configuration')} />
     <Route path="/admin/medical-agreement" element={admin(<MedicalAgreementPage />, 'medicalAgreement', ['medicalAgreement'])} />
     <Route path="*" element={<Navigate to="/" replace />} />

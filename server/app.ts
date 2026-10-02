@@ -1,5 +1,6 @@
 import express from 'express'
 import type { Banco } from './database/conexao'
+import { criarRotasUsuarios } from './routes/usuarios'
 import { criarRotasVeiculos } from './routes/veiculos'
 import { resetarBanco } from './seed/seed'
 
@@ -16,6 +17,7 @@ export function criarApp(db: Banco) {
   })
 
   app.use('/api/vehicles', criarRotasVeiculos(db))
+  app.use('/api/users', criarRotasUsuarios(db))
 
   // Restaura os dados de demonstração (usado pelo botão "Restaurar dados").
   // Sem autenticação: aceitável apenas por ser um protótipo acadêmico local.

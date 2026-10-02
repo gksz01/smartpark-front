@@ -1,4 +1,4 @@
-import type { DashboardMetricId, Feature, Permission, Role, TenantConfig, TenantId } from './types'
+import type { DashboardMetricId, Feature, Permission, PersonType, Role, TenantConfig, TenantId } from './types'
 
 export const ROLE_LABELS: Record<Role, string> = {
   driver: 'Motorista',
@@ -20,6 +20,15 @@ export const FEATURE_LABELS: Record<Feature, string> = {
   reports: 'Relatórios',
   notifications: 'Notificações',
   whiteLabel: 'White-label',
+}
+
+export const PERSON_TYPE_LABELS: Record<PersonType, string> = {
+  motorista: 'Motorista',
+  morador: 'Morador',
+  visitante: 'Visitante',
+  funcionario: 'Funcionário',
+  paciente: 'Paciente',
+  acompanhante: 'Acompanhante',
 }
 
 export const ACCESS_LABELS = {
@@ -54,6 +63,7 @@ export const TENANTS: Record<TenantId, TenantConfig> = {
     allowedRoles: ['driver', 'operator', 'admin', 'valet'],
     theme: { primary: '#13795b', primaryStrong: '#0b503d', secondary: '#e9a23b', accent: '#65c18c', soft: '#edf8f3', surface: '#ffffff' },
     vehicleFields: [],
+    personTypes: ['motorista', 'funcionario'],
     dashboardCards: ['occupancy', 'entries', 'reservations', 'revenue', 'alerts'],
   },
   condominium: {
@@ -68,6 +78,7 @@ export const TENANTS: Record<TenantId, TenantConfig> = {
     allowedRoles: ['resident', 'visitor', 'operator', 'admin'],
     theme: { primary: '#2463a9', primaryStrong: '#173f72', secondary: '#6aa9e8', accent: '#f1a84b', soft: '#edf5fc', surface: '#ffffff' },
     vehicleFields: [{ key: 'unit', label: 'Unidade / apartamento', placeholder: 'Ex.: Torre B · 804' }],
+    personTypes: ['morador', 'visitante'],
     dashboardCards: ['occupancy', 'visitors', 'entries', 'exits', 'alerts'],
   },
   hospital: {
@@ -82,6 +93,7 @@ export const TENANTS: Record<TenantId, TenantConfig> = {
     allowedRoles: ['driver', 'visitor', 'employee', 'operator', 'admin'],
     theme: { primary: '#087c82', primaryStrong: '#07585f', secondary: '#3aa6a0', accent: '#7dc8b8', soft: '#eaf7f6', surface: '#ffffff' },
     vehicleFields: [],
+    personTypes: ['paciente', 'acompanhante'],
     dashboardCards: ['occupancy', 'entries', 'agreements', 'alerts', 'revenue'],
   },
   company: {
@@ -96,6 +108,7 @@ export const TENANTS: Record<TenantId, TenantConfig> = {
     allowedRoles: ['employee', 'visitor', 'operator', 'admin'],
     theme: { primary: '#34445d', primaryStrong: '#1d293b', secondary: '#687b98', accent: '#df8e48', soft: '#eef1f5', surface: '#ffffff' },
     vehicleFields: [{ key: 'rfidTag', label: 'Tag RFID', placeholder: 'Ex.: NX-92841' }],
+    personTypes: ['funcionario', 'visitante'],
     dashboardCards: ['occupancy', 'employees', 'visitors', 'entries', 'alerts'],
   },
 }
@@ -108,8 +121,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   resident: ['portal', 'vehicles'],
   employee: ['portal', 'vehicles'],
   visitor: ['portal'],
-  operator: ['spaces', 'access', 'medicalAgreement'],
-  admin: ['dashboard', 'spaces', 'access', 'configuration', 'medicalAgreement'],
+  operator: ['spaces', 'access', 'medicalAgreement', 'users'],
+  admin: ['dashboard', 'spaces', 'access', 'configuration', 'medicalAgreement', 'users'],
   valet: ['vehicles', 'access'],
 }
 

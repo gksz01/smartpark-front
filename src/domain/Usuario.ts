@@ -1,7 +1,8 @@
 import { hasPermission } from '../core/config'
-import type { Permission, Role, TenantId } from '../core/types'
+import type { PersonType, Permission, Role, TenantId } from '../core/types'
 
-export type TipoUsuario = 'motorista' | 'morador' | 'visitante' | 'funcionario' | 'paciente' | 'acompanhante'
+// A lista de tipos fica em core/types.ts, usada também pelo personTypes de cada tenant.
+export type TipoUsuario = PersonType
 
 /**
  * Pessoa que utiliza o SmartPark em algum cliente (tenant).

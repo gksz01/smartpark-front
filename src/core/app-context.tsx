@@ -81,6 +81,8 @@ interface AppContextValue {
   state: DemoState
   tenant: (typeof TENANTS)[TenantId]
   configurationError: string
+  /** Muda a cada "Restaurar dados": telas que carregam os próprios dados usam para recarregar. */
+  dataVersion: number
   selectContext: (tenantId: TenantId, role: Role) => void
   setAcademicMode: (enabled: boolean) => void
   vehiclesError: string
@@ -135,6 +137,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     state,
     tenant: TENANTS[state.tenantId],
     configurationError,
+    dataVersion: reloadKey,
     vehiclesError,
     selectContext: (tenantId, role) => { dispatch({ type: 'SELECT_CONTEXT', tenantId, role }); setConfigurationError('') },
     setAcademicMode: (enabled) => dispatch({ type: 'SET_ACADEMIC', enabled }),
@@ -162,7 +165,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'RESET' })
       setReloadKey((key) => key + 1)
     },
-  }), [configurationError, state, vehiclesError])
+  }), [configurationError, reloadKey, state, vehiclesError])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }
