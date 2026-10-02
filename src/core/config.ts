@@ -1,4 +1,4 @@
-import type { DashboardMetricId, Feature, Permission, PersonType, Role, TenantConfig, TenantId } from './types'
+import type { DashboardMetricId, Feature, Permission, PersonType, Role, SpaceStatus, TenantConfig, TenantId } from './types'
 
 export const ROLE_LABELS: Record<Role, string> = {
   driver: 'Motorista',
@@ -30,6 +30,8 @@ export const PERSON_TYPE_LABELS: Record<PersonType, string> = {
   paciente: 'Paciente',
   acompanhante: 'Acompanhante',
 }
+
+export const SPACE_STATUSES: SpaceStatus[] = ['Livre', 'Ocupada', 'Bloqueada', 'Reservada']
 
 export const ACCESS_LABELS = {
   LPR: 'Leitura de placa (LPR)',
@@ -64,6 +66,7 @@ export const TENANTS: Record<TenantId, TenantConfig> = {
     theme: { primary: '#13795b', primaryStrong: '#0b503d', secondary: '#e9a23b', accent: '#65c18c', soft: '#edf8f3', surface: '#ffffff' },
     vehicleFields: [],
     personTypes: ['motorista', 'funcionario'],
+    spaceTypes: ['Comum', 'PCD', 'Elétrico'],
     dashboardCards: ['occupancy', 'entries', 'reservations', 'revenue', 'alerts'],
   },
   condominium: {
@@ -79,6 +82,7 @@ export const TENANTS: Record<TenantId, TenantConfig> = {
     theme: { primary: '#2463a9', primaryStrong: '#173f72', secondary: '#6aa9e8', accent: '#f1a84b', soft: '#edf5fc', surface: '#ffffff' },
     vehicleFields: [{ key: 'unit', label: 'Unidade / apartamento', placeholder: 'Ex.: Torre B · 804' }],
     personTypes: ['morador', 'visitante'],
+    spaceTypes: ['Nominal', 'Comum', 'PCD'],
     dashboardCards: ['occupancy', 'visitors', 'entries', 'exits', 'alerts'],
   },
   hospital: {
@@ -94,6 +98,7 @@ export const TENANTS: Record<TenantId, TenantConfig> = {
     theme: { primary: '#087c82', primaryStrong: '#07585f', secondary: '#3aa6a0', accent: '#7dc8b8', soft: '#eaf7f6', surface: '#ffffff' },
     vehicleFields: [],
     personTypes: ['paciente', 'acompanhante'],
+    spaceTypes: ['Prioritária', 'Comum', 'PCD'],
     dashboardCards: ['occupancy', 'entries', 'agreements', 'alerts', 'revenue'],
   },
   company: {
@@ -109,6 +114,7 @@ export const TENANTS: Record<TenantId, TenantConfig> = {
     theme: { primary: '#34445d', primaryStrong: '#1d293b', secondary: '#687b98', accent: '#df8e48', soft: '#eef1f5', surface: '#ffffff' },
     vehicleFields: [{ key: 'rfidTag', label: 'Tag RFID', placeholder: 'Ex.: NX-92841' }],
     personTypes: ['funcionario', 'visitante'],
+    spaceTypes: ['Comum', 'PCD', 'Elétrico', 'Restrito'],
     dashboardCards: ['occupancy', 'employees', 'visitors', 'entries', 'alerts'],
   },
 }

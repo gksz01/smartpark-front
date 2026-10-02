@@ -1,11 +1,12 @@
-import { Activity, AlertTriangle, ArrowRight, BadgeCheck, Car, Check, CircleDollarSign, CircleParking, Clock3, DoorOpen, HeartHandshake, LogIn, LogOut, Palette, ShieldCheck, Stethoscope, TicketCheck, UserRound, UsersRound, X } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { Activity, AlertTriangle, ArrowRight, BadgeCheck, Car, Check, CircleDollarSign, CircleParking, Clock3, DoorOpen, Edit3, HeartHandshake, LogIn, LogOut, Palette, Plus, ShieldCheck, Stethoscope, TicketCheck, Trash2, UserRound, UsersRound, X } from 'lucide-react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useTenant } from '../../core/app-context'
-import { ACCESS_LABELS, FEATURE_LABELS, METRIC_LABELS, METRIC_VALUES, ROLE_LABELS } from '../../core/config'
+import { ACCESS_LABELS, FEATURE_LABELS, METRIC_LABELS, METRIC_VALUES, ROLE_LABELS, SPACE_STATUSES } from '../../core/config'
 import { RoleGate } from '../../core/gates'
-import type { AccessRecord, DashboardMetricId, MedicalValidation, ParkingSpace } from '../../core/types'
-import { ACCESS_RECORDS, SPACES } from '../../data/mocks'
-import { Alert, Button, Card, DataTable, FormField, PageHeader, StatCard, StatusBadge, VariationInfo, type Column } from '../../shared/ui'
+import type { AccessRecord, DashboardMetricId, MedicalValidation, ParkingSpace, SpaceStatus, SpaceType } from '../../core/types'
+import { ACCESS_RECORDS } from '../../data/mocks'
+import { createSpace, deleteSpace, listSpaces, updateSpace, type SpaceInput } from '../../services/spacesApi'
+import { Alert, Button, Card, ConfirmDialog, DataTable, FormField, PageHeader, StatCard, StatusBadge, VariationInfo, type Column } from '../../shared/ui'
 
 const METRIC_ICONS: Record<DashboardMetricId, typeof Activity> = {
   occupancy: CircleParking, entries: LogIn, exits: LogOut, reservations: TicketCheck, revenue: CircleDollarSign, alerts: AlertTriangle, agreements: HeartHandshake, visitors: UserRound, employees: UsersRound,
@@ -24,21 +25,190 @@ export function DashboardPage() {
 const SPACE_TONE = { Livre: 'success', Ocupada: 'info', Bloqueada: 'danger', Reservada: 'warning' } as const
 
 export function SpacesPage() {
+  const { tenant, dataVersion } = useTenant()
+  const [spaces, setSpaces] = useState<ParkingSpace[]>([])
   const [status, setStatus] = useState('Todas')
   const [sector, setSector] = useState('Todos')
-  const visible = SPACES.filter((space) => (status === 'Todas' || space.status === status) && (sector === 'Todos' || space.sector === sector))
-  const counts = (['Livre', 'Ocupada', 'Bloqueada', 'Reservada'] as ParkingSpace['status'][]).map((item) => ({ item, count: SPACES.filter((space) => space.status === item).length }))
+  const [editing, setEditing] = useState<ParkingSpace | null>(null)
+  const [form, setForm] = useState<SpaceInput>({ code: '', sector: '', type: tenant.spaceTypes[0], status: 'Livre' })
+  const [formOpen, setFormOpen] = useState(false)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+
+  // READ: carrega as vagas do tenant ativo (e de novo após "Restaurar dados")
+  useEffect(() => {
+    let current = true
+    listSpaces(tenant.id)
+      .then((list) => {
+        if (!current) return
+        setSpaces(list)
+        setError('')
+      })
+      .catch((failure: Error) => {
+        if (!current) return
+        setSpaces([])
+        setError(`Não foi possível carregar as vagas: ${failure.message}`)
+      })
+    return () => { current = false }
+  }, [tenant.id, dataVersion])
+
+  // Setores vêm dos dados reais; se o setor escolhido não existir mais, mostra todos
+  const sectors = [...new Set(spaces.map((space) => space.sector))].sort()
+  const activeSector = sectors.includes(sector) ? sector : 'Todos'
+  const visible = spaces.filter((space) => (status === 'Todas' || space.status === status) && (activeSector === 'Todos' || space.sector === activeSector))
+  const counts = SPACE_STATUSES.map((item) => ({ item, count: spaces.filter((space) => space.status === item).length }))
+
+  const openCreate = () => {
+    setEditing(null)
+    setForm({ code: '', sector: '', type: tenant.spaceTypes[0], status: 'Livre' })
+    setFormOpen(true)
+    setMessage('')
+    setError('')
+  }
+  const openEdit = (space: ParkingSpace) => {
+    setEditing(space)
+    setForm({ code: space.code, sector: space.sector, type: space.type, status: space.status })
+    setFormOpen(true)
+    setMessage('')
+    setError('')
+  }
+  const close = () => setFormOpen(false)
+
+  // CREATE / UPDATE: a API usa o Creator do tipo escolhido (Factory Method) antes de gravar
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    try {
+      if (editing) {
+        const updated = await updateSpace(tenant.id, editing.id, form)
+        setSpaces((current) => current.map((space) => space.id === updated.id ? updated : space))
+        setMessage(`Vaga ${updated.code} atualizada com sucesso.`)
+      } else {
+        const created = await createSpace(tenant.id, form)
+        setSpaces((current) => [...current, created])
+        setMessage(`Vaga ${created.code} cadastrada com sucesso.`)
+      }
+      setFormOpen(false)
+    } catch (failure) {
+      setError((failure as Error).message)
+    }
+  }
+
+  // DELETE: a API recusa vagas Ocupadas ou Reservadas
+  const confirmDelete = async (id: string) => {
+    setDeleteId(null)
+    try {
+      await deleteSpace(tenant.id, id)
+      setSpaces((current) => current.filter((space) => space.id !== id))
+      setMessage('Vaga excluída.')
+    } catch (failure) {
+      setError((failure as Error).message)
+    }
+  }
+
   const columns: Column<ParkingSpace>[] = [
-    { header: 'Vaga', render: (row) => <strong>{row.id}</strong> },
+    { header: 'Vaga', render: (row) => <strong>{row.code}</strong> },
     { header: 'Setor', render: (row) => `Setor ${row.sector}` },
-    { header: 'Categoria', render: (row) => <span className="inline-flex items-center gap-2"><Car size={15} />{row.type}</span> },
+    { header: 'Categoria', render: (row) => <div><span className="inline-flex items-center gap-2"><Car size={15} />{row.type}</span><small className="table-subtitle">{row.requirement}</small></div> },
     { header: 'Status', render: (row) => <StatusBadge tone={SPACE_TONE[row.status]}>{row.status}</StatusBadge> },
+    {
+      header: 'Ações',
+      render: (row) => (
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => openEdit(row)} aria-label={`Editar vaga ${row.code}`}><Edit3 size={16} /> Editar</Button>
+          <Button variant="ghost" onClick={() => setDeleteId(row.id)} aria-label={`Excluir vaga ${row.code}`}><Trash2 size={16} /> Excluir</Button>
+        </div>
+      ),
+    },
   ]
-  return <div className="admin-page"><PageHeader eyebrow="Capacidade operacional" title="Vagas e setores" description="Acompanhe disponibilidade e categorias em uma visão unificada." />
-    <VariationInfo>A mesma tabela representa todos os clientes. Categorias como PCD, elétrica, nominal e restrita são dados configuráveis, não páginas alternativas.</VariationInfo>
-    <div className="space-summary">{counts.map(({ item, count }) => <button key={item} onClick={() => setStatus(status === item ? 'Todas' : item)} className={status === item ? 'active' : ''}><span className={`space-dot ${item.toLowerCase()}`} /><div><strong>{count}</strong><small>{item}s</small></div></button>)}</div>
-    <Card><div className="table-toolbar"><div><h2>Mapa lógico de vagas</h2><p>{visible.length} registros visíveis</p></div><div className="filter-selects"><select aria-label="Filtrar por setor" value={sector} onChange={(event) => setSector(event.target.value)}><option>Todos</option><option>A</option><option>B</option><option>C</option></select><select aria-label="Filtrar por status" value={status} onChange={(event) => setStatus(event.target.value)}><option>Todas</option><option>Livre</option><option>Ocupada</option><option>Bloqueada</option><option>Reservada</option></select></div></div><DataTable rows={visible} columns={columns} /></Card>
-  </div>
+
+  return (
+    <div className="admin-page">
+      <PageHeader
+        eyebrow="Capacidade operacional"
+        title="Vagas e setores"
+        description="Acompanhe disponibilidade e categorias em uma visão unificada."
+        action={<Button onClick={openCreate}><Plus size={17} /> Nova vaga</Button>}
+      />
+      <VariationInfo>
+        A mesma tabela representa todos os clientes. Os tipos oferecidos vêm de `spaceTypes` (Prioritária no Hospital, Nominal no Condomínio,
+        Restrita na Empresa) e cada tipo é criado pelo seu Creator do Factory Method.
+      </VariationInfo>
+      {message && <Alert>{message}</Alert>}
+      {error && !formOpen && <Alert tone="danger">{error}</Alert>}
+
+      <div className="space-summary">
+        {counts.map(({ item, count }) => (
+          <button key={item} onClick={() => setStatus(status === item ? 'Todas' : item)} className={status === item ? 'active' : ''}>
+            <span className={`space-dot ${item.toLowerCase()}`} />
+            <div><strong>{count}</strong><small>{item}s</small></div>
+          </button>
+        ))}
+      </div>
+
+      <Card>
+        <div className="table-toolbar">
+          <div>
+            <h2>Mapa lógico de vagas</h2>
+            <p>{visible.length} registros visíveis</p>
+          </div>
+          <div className="filter-selects">
+            <select aria-label="Filtrar por setor" value={activeSector} onChange={(event) => setSector(event.target.value)}>
+              <option>Todos</option>
+              {sectors.map((item) => <option key={item}>{item}</option>)}
+            </select>
+            <select aria-label="Filtrar por status" value={status} onChange={(event) => setStatus(event.target.value)}>
+              <option>Todas</option>
+              {SPACE_STATUSES.map((item) => <option key={item}>{item}</option>)}
+            </select>
+          </div>
+        </div>
+        <DataTable rows={visible} columns={columns} emptyMessage="Nenhuma vaga cadastrada." />
+      </Card>
+
+      {formOpen && (
+        <div className="modal-backdrop">
+          <form className="modal" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="space-form-title">
+            <button type="button" className="modal-close" onClick={close} aria-label="Fechar"><X size={18} /></button>
+            <p className="eyebrow">Cadastro de vagas</p>
+            <h2 id="space-form-title">{editing ? `Editar vaga ${editing.code}` : 'Nova vaga'}</h2>
+            <div className="mt-6 space-y-4">
+              <FormField label="Código">
+                <input required value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} placeholder="Ex.: A-05" />
+              </FormField>
+              <FormField label="Setor">
+                <input required value={form.sector} onChange={(event) => setForm({ ...form, sector: event.target.value })} placeholder="Ex.: A" />
+              </FormField>
+              <FormField label="Tipo">
+                <select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as SpaceType })}>
+                  {tenant.spaceTypes.map((type) => <option key={type}>{type}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Status">
+                <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as SpaceStatus })}>
+                  {SPACE_STATUSES.map((item) => <option key={item}>{item}</option>)}
+                </select>
+              </FormField>
+            </div>
+            {error && <div className="mt-5"><Alert tone="danger">{error}</Alert></div>}
+            <div className="mt-7 flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={close}>Cancelar</Button>
+              <Button type="submit">Salvar vaga</Button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {deleteId && (
+        <ConfirmDialog
+          title="Excluir vaga?"
+          description="Somente vagas livres ou bloqueadas podem ser excluídas."
+          onCancel={() => setDeleteId(null)}
+          onConfirm={() => confirmDelete(deleteId)}
+        />
+      )}
+    </div>
+  )
 }
 
 export function AccessPage() {

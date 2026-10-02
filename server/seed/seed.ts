@@ -24,6 +24,33 @@ const USUARIOS_INICIAIS = [
   { tenant_id: 'company', nome: 'Diego Ramos', documento: '901.234.567-89', tipo: 'visitante', perfil: 'visitor', ativo: 1 },
 ]
 
+/** Vagas de demonstração: os tipos mudam conforme o spaceTypes de cada tenant. */
+const VAGAS_INICIAIS = [
+  { tenant_id: 'shopping', codigo: 'A-01', setor: 'A', tipo: 'Comum', status: 'Livre' },
+  { tenant_id: 'shopping', codigo: 'A-02', setor: 'A', tipo: 'PCD', status: 'Ocupada' },
+  { tenant_id: 'shopping', codigo: 'A-03', setor: 'A', tipo: 'Elétrico', status: 'Reservada' },
+  { tenant_id: 'shopping', codigo: 'A-04', setor: 'A', tipo: 'Comum', status: 'Bloqueada' },
+  { tenant_id: 'shopping', codigo: 'B-11', setor: 'B', tipo: 'Comum', status: 'Livre' },
+  { tenant_id: 'shopping', codigo: 'B-12', setor: 'B', tipo: 'Comum', status: 'Ocupada' },
+  { tenant_id: 'shopping', codigo: 'B-13', setor: 'B', tipo: 'Elétrico', status: 'Livre' },
+  { tenant_id: 'shopping', codigo: 'B-14', setor: 'B', tipo: 'PCD', status: 'Livre' },
+  { tenant_id: 'condominium', codigo: 'T1-101', setor: 'Torre 1', tipo: 'Nominal', status: 'Ocupada' },
+  { tenant_id: 'condominium', codigo: 'T1-102', setor: 'Torre 1', tipo: 'Nominal', status: 'Livre' },
+  { tenant_id: 'condominium', codigo: 'T2-804', setor: 'Torre 2', tipo: 'Nominal', status: 'Ocupada' },
+  { tenant_id: 'condominium', codigo: 'V-01', setor: 'Visitantes', tipo: 'Comum', status: 'Livre' },
+  { tenant_id: 'condominium', codigo: 'V-02', setor: 'Visitantes', tipo: 'PCD', status: 'Bloqueada' },
+  { tenant_id: 'hospital', codigo: 'P-01', setor: 'Pronto-socorro', tipo: 'Prioritária', status: 'Ocupada' },
+  { tenant_id: 'hospital', codigo: 'P-02', setor: 'Pronto-socorro', tipo: 'Prioritária', status: 'Livre' },
+  { tenant_id: 'hospital', codigo: 'P-03', setor: 'Pronto-socorro', tipo: 'PCD', status: 'Livre' },
+  { tenant_id: 'hospital', codigo: 'C-10', setor: 'Consultórios', tipo: 'Comum', status: 'Ocupada' },
+  { tenant_id: 'hospital', codigo: 'C-11', setor: 'Consultórios', tipo: 'Comum', status: 'Bloqueada' },
+  { tenant_id: 'company', codigo: 'D-01', setor: 'Diretoria', tipo: 'Restrito', status: 'Ocupada' },
+  { tenant_id: 'company', codigo: 'D-02', setor: 'Diretoria', tipo: 'Restrito', status: 'Livre' },
+  { tenant_id: 'company', codigo: 'G-01', setor: 'Garagem', tipo: 'Elétrico', status: 'Ocupada' },
+  { tenant_id: 'company', codigo: 'G-02', setor: 'Garagem', tipo: 'Comum', status: 'Livre' },
+  { tenant_id: 'company', codigo: 'G-03', setor: 'Garagem', tipo: 'PCD', status: 'Livre' },
+]
+
 export function popularVeiculos(db: Banco): void {
   const inserir = db.prepare(`
     INSERT INTO veiculos (tenant_id, apelido, placa, modelo, cor, unidade, tag_rfid)
@@ -40,12 +67,21 @@ export function popularUsuarios(db: Banco): void {
   for (const usuario of USUARIOS_INICIAIS) inserir.run(usuario)
 }
 
+export function popularVagas(db: Banco): void {
+  const inserir = db.prepare(`
+    INSERT INTO vagas (tenant_id, codigo, setor, tipo, status)
+    VALUES (@tenant_id, @codigo, @setor, @tipo, @status)
+  `)
+  for (const vaga of VAGAS_INICIAIS) inserir.run(vaga)
+}
+
 export function popularBanco(db: Banco): void {
   popularVeiculos(db)
   popularUsuarios(db)
+  popularVagas(db)
 }
 
-function tabelaVazia(db: Banco, tabela: 'veiculos' | 'usuarios'): boolean {
+function tabelaVazia(db: Banco, tabela: 'veiculos' | 'usuarios' | 'vagas'): boolean {
   const { total } = db.prepare(`SELECT COUNT(*) AS total FROM ${tabela}`).get() as { total: number }
   return total === 0
 }
@@ -58,6 +94,7 @@ export function popularTabelasVazias(db: Banco): string[] {
   const populadas: string[] = []
   if (tabelaVazia(db, 'veiculos')) { popularVeiculos(db); populadas.push('veiculos') }
   if (tabelaVazia(db, 'usuarios')) { popularUsuarios(db); populadas.push('usuarios') }
+  if (tabelaVazia(db, 'vagas')) { popularVagas(db); populadas.push('vagas') }
   return populadas
 }
 
@@ -66,7 +103,8 @@ export function resetarBanco(db: Banco): void {
   const resetar = db.transaction(() => {
     db.exec('DELETE FROM veiculos')
     db.exec('DELETE FROM usuarios')
-    db.exec("DELETE FROM sqlite_sequence WHERE name IN ('veiculos', 'usuarios')") // reinicia os ids em 1
+    db.exec('DELETE FROM vagas')
+    db.exec("DELETE FROM sqlite_sequence WHERE name IN ('veiculos', 'usuarios', 'vagas')") // reinicia os ids em 1
     popularBanco(db)
   })
   resetar()

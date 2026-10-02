@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { TenantProvider, TenantThemeProvider } from './core/app-context'
+import { createSpace, deleteSpace, listSpaces, updateSpace } from './test/fakeSpacesApi'
 import { createUser, deleteUser, listUsers, updateUser } from './test/fakeUsersApi'
 import { createVehicle, deleteVehicle, listVehicles, updateVehicle } from './test/fakeVehiclesApi'
 
@@ -235,5 +236,107 @@ describe('pessoas (usuários)', () => {
     renderRoute('/admin/users?tenant=shopping&role=operator')
     expect(screen.getByRole('heading', { name: 'Pessoas' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Pessoas/ })).toBeInTheDocument() // item no menu
+  })
+})
+
+describe('vagas', () => {
+  const tiposDoFormulario = () => Array.from((screen.getByLabelText('Tipo') as HTMLSelectElement).options).map((option) => option.text)
+
+  it('lista as vagas do tenant vindas da API, com o requisito da subclasse', async () => {
+    renderRoute('/admin/spaces?tenant=shopping&role=admin')
+    expect(await screen.findByText('A-01')).toBeInTheDocument()
+    expect(screen.getByText('Exige credencial PCD visível no veículo')).toBeInTheDocument()
+    expect(screen.getByText('3 registros visíveis')).toBeInTheDocument()
+    expect(listSpaces).toHaveBeenCalledWith('shopping')
+  })
+
+  it('o filtro de setor usa os setores reais e continua funcionando', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/spaces?tenant=shopping&role=admin')
+    await screen.findByText('A-01')
+    const setores = Array.from((screen.getByLabelText('Filtrar por setor') as HTMLSelectElement).options).map((option) => option.text)
+    expect(setores).toEqual(['Todos', 'A', 'B'])
+    await user.selectOptions(screen.getByLabelText('Filtrar por setor'), 'B')
+    expect(screen.getByText('1 registros visíveis')).toBeInTheDocument()
+    expect(screen.queryByText('A-01')).not.toBeInTheDocument()
+  })
+
+  it('cadastra uma vaga', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/spaces?tenant=shopping&role=admin')
+    await user.click(screen.getByRole('button', { name: /Nova vaga/ }))
+    await user.type(screen.getByLabelText('Código'), 'C-30')
+    await user.type(screen.getByLabelText('Setor'), 'C')
+    await user.selectOptions(screen.getByLabelText('Tipo'), 'Elétrico')
+    await user.click(screen.getByRole('button', { name: 'Salvar vaga' }))
+    expect(await screen.findByText('Vaga C-30 cadastrada com sucesso.')).toBeInTheDocument()
+    expect(createSpace).toHaveBeenCalledWith('shopping', { code: 'C-30', sector: 'C', type: 'Elétrico', status: 'Livre' })
+  })
+
+  it('edita código, setor, tipo e status', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/spaces?tenant=shopping&role=admin')
+    await user.click(await screen.findByRole('button', { name: 'Editar vaga A-01' }))
+    await user.clear(screen.getByLabelText('Código'))
+    await user.type(screen.getByLabelText('Código'), 'A-10')
+    await user.selectOptions(screen.getByLabelText('Tipo'), 'PCD')
+    await user.selectOptions(screen.getByLabelText('Status'), 'Bloqueada')
+    await user.click(screen.getByRole('button', { name: 'Salvar vaga' }))
+    expect(await screen.findByText('Vaga A-10 atualizada com sucesso.')).toBeInTheDocument()
+    expect(updateSpace).toHaveBeenCalledWith('shopping', '1', { code: 'A-10', sector: 'A', type: 'PCD', status: 'Bloqueada' })
+  })
+
+  it('exclui uma vaga livre', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/spaces?tenant=shopping&role=admin')
+    await user.click(await screen.findByRole('button', { name: 'Excluir vaga A-01' }))
+    await user.click(screen.getByRole('button', { name: 'Excluir' }))
+    expect(await screen.findByText('Vaga excluída.')).toBeInTheDocument()
+    expect(screen.queryByText('A-01')).not.toBeInTheDocument()
+    expect(deleteSpace).toHaveBeenCalledWith('shopping', '1')
+  })
+
+  it('mostra o erro da API ao tentar excluir uma vaga ocupada', async () => {
+    deleteSpace.mockRejectedValueOnce(new Error('A vaga A-02 está Ocupada e não pode ser excluída. Libere ou bloqueie a vaga antes.'))
+    const user = userEvent.setup()
+    renderRoute('/admin/spaces?tenant=shopping&role=admin')
+    await user.click(await screen.findByRole('button', { name: 'Excluir vaga A-02' }))
+    await user.click(screen.getByRole('button', { name: 'Excluir' }))
+    expect(await screen.findByText(/A vaga A-02 está Ocupada/)).toBeInTheDocument()
+    expect(screen.getByText('A-02')).toBeInTheDocument() // continua na lista
+  })
+
+  it('ao trocar de tenant, carrega as vagas do novo tenant', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/spaces?tenant=shopping&role=admin')
+    expect(await screen.findByText('A-01')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('link', { name: /Trocar contexto/ }))
+    await user.click(screen.getByRole('button', { name: /Santa Clara/ }))
+    await user.click(screen.getByRole('button', { name: /Entrar como Administrador/ }))
+    await user.click(await screen.findByRole('link', { name: /Vagas e setores/ }))
+
+    expect(await screen.findByText('P-01')).toBeInTheDocument()
+    expect(screen.queryByText('A-01')).not.toBeInTheDocument()
+    expect(listSpaces).toHaveBeenLastCalledWith('hospital')
+  })
+
+  it('o formulário oferece somente os spaceTypes de cada tenant', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/spaces?tenant=hospital&role=admin')
+    await user.click(screen.getByRole('button', { name: /Nova vaga/ }))
+    expect(tiposDoFormulario()).toEqual(['Prioritária', 'Comum', 'PCD'])
+    cleanup()
+
+    renderRoute('/admin/spaces?tenant=condominium&role=admin')
+    await user.click(screen.getByRole('button', { name: /Nova vaga/ }))
+    expect(tiposDoFormulario()).toEqual(['Nominal', 'Comum', 'PCD'])
+    cleanup()
+
+    renderRoute('/admin/spaces?tenant=shopping&role=admin')
+    await user.click(screen.getByRole('button', { name: /Nova vaga/ }))
+    expect(tiposDoFormulario()).toEqual(['Comum', 'PCD', 'Elétrico'])
+    expect(tiposDoFormulario()).not.toContain('Prioritária')
+    expect(tiposDoFormulario()).not.toContain('Nominal')
   })
 })

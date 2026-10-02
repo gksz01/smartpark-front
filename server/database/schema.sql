@@ -23,3 +23,13 @@ CREATE TABLE IF NOT EXISTS usuarios (
   ativo      INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
   UNIQUE (tenant_id, documento) -- o mesmo documento não se repete dentro de um cliente
 );
+
+CREATE TABLE IF NOT EXISTS vagas (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id  TEXT    NOT NULL CHECK (tenant_id IN ('shopping', 'condominium', 'hospital', 'company')),
+  codigo     TEXT    NOT NULL,
+  setor      TEXT    NOT NULL,
+  tipo       TEXT    NOT NULL,  -- a API aceita só os spaceTypes do tenant
+  status     TEXT    NOT NULL DEFAULT 'Livre' CHECK (status IN ('Livre', 'Ocupada', 'Bloqueada', 'Reservada')),
+  UNIQUE (tenant_id, codigo)    -- o mesmo código não se repete dentro de um cliente
+);

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { TENANT_ORDER, TENANTS } from '../../../core/config'
 import {
-  CriadorVagaComum, CriadorVagaEletrica, CriadorVagaNominal, CriadorVagaPCD, CriadorVagaPrioritaria, Estacionamento, Vaga,
-  VagaComum, VagaEletrica, VagaNominal, VagaPCD, VagaPrioritaria, type CriadorVaga,
+  CRIADOR_POR_TIPO, CriadorVagaComum, CriadorVagaEletrica, CriadorVagaNominal, CriadorVagaPCD, CriadorVagaPrioritaria, CriadorVagaRestrita, Estacionamento, Vaga,
+  VagaComum, VagaEletrica, VagaNominal, VagaPCD, VagaPrioritaria, VagaRestrita, type CriadorVaga,
 } from '../..'
 
 describe('Factory Method — Exemplo 1: criação de vagas', () => {
@@ -44,5 +45,38 @@ describe('Factory Method — Exemplo 1: criação de vagas', () => {
     expect(estacionamento.totalVagas()).toBe(3)
     expect(estacionamento.vagas.map((vaga) => vaga.tipo)).toEqual(['Comum', 'PCD', 'Elétrico'])
     expect(estacionamento.buscarVagaLivre('Elétrico')?.codigo).toBe('A-03')
+  })
+})
+
+describe('Factory Method — Creator escolhido pelo tipo (usado pela API de vagas)', () => {
+  it('CriadorVagaRestrita cria uma VagaRestrita', () => {
+    const vaga = new CriadorVagaRestrita().criarVaga('7', 'D-01', 'Diretoria')
+    expect(vaga).toBeInstanceOf(VagaRestrita)
+    expect(vaga.tipo).toBe('Restrito')
+    expect(vaga.requisitoDeUso()).toBe('Exclusiva para credenciais autorizadas')
+  })
+
+  it('CRIADOR_POR_TIPO devolve o Creator que cria a subclasse correta', () => {
+    expect(CRIADOR_POR_TIPO['Comum'].criarVaga('1', 'X', 'A')).toBeInstanceOf(VagaComum)
+    expect(CRIADOR_POR_TIPO['PCD'].criarVaga('1', 'X', 'A')).toBeInstanceOf(VagaPCD)
+    expect(CRIADOR_POR_TIPO['Elétrico'].criarVaga('1', 'X', 'A')).toBeInstanceOf(VagaEletrica)
+    expect(CRIADOR_POR_TIPO['Nominal'].criarVaga('1', 'X', 'A')).toBeInstanceOf(VagaNominal)
+    expect(CRIADOR_POR_TIPO['Restrito'].criarVaga('1', 'X', 'A')).toBeInstanceOf(VagaRestrita)
+    expect(CRIADOR_POR_TIPO['Prioritária'].criarVaga('1', 'X', 'A')).toBeInstanceOf(VagaPrioritaria)
+  })
+
+  it('todo tipo do spaceTypes de cada tenant tem um Creator', () => {
+    TENANT_ORDER.forEach((id) => {
+      TENANTS[id].spaceTypes.forEach((tipo) => {
+        expect(CRIADOR_POR_TIPO[tipo].criarVaga('1', 'X', 'A').tipo).toBe(tipo)
+      })
+    })
+  })
+
+  it('só vagas Livres ou Bloqueadas podem ser excluídas', () => {
+    expect(new VagaComum('1', 'A', 'A', 'Livre').podeSerExcluida()).toBe(true)
+    expect(new VagaComum('1', 'A', 'A', 'Bloqueada').podeSerExcluida()).toBe(true)
+    expect(new VagaComum('1', 'A', 'A', 'Ocupada').podeSerExcluida()).toBe(false)
+    expect(new VagaComum('1', 'A', 'A', 'Reservada').podeSerExcluida()).toBe(false)
   })
 })

@@ -40,6 +40,6 @@ O backend fica em `server/` e grava no arquivo SQLite `server/database/smartpark
 - `npm run db:reset` — recria os dados de demonstração pelo terminal.
 - O botão de restauração na barra superior chama `POST /api/reset` com o mesmo efeito.
 
-Veículos e Pessoas (`/admin/users`) já são lidos e gravados no banco. Os demais dados ainda são mockados e o contexto (cliente, perfil e modo acadêmico) continua no `localStorage`.
+Veículos, Pessoas (`/admin/users`) e Vagas (`/admin/spaces`) já são lidos e gravados no banco. Os demais dados ainda são mockados e o contexto (cliente, perfil e modo acadêmico) continua no `localStorage`.
 
 Consulte [docs/parte-3.md](docs/parte-3.md) para a arquitetura, matriz de variabilidade, controle de acesso e roteiro das 12 interfaces.

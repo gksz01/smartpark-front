@@ -22,6 +22,10 @@ export type Feature =
 
 export type AccessMethod = 'LPR' | 'RFID' | 'QR_CODE' | 'MANUAL'
 
+/** Tipos de vaga. Cada tenant escolhe os seus em spaceTypes; cada tipo tem um Creator (Factory Method). */
+export type SpaceType = 'Comum' | 'PCD' | 'Elétrico' | 'Nominal' | 'Restrito' | 'Prioritária'
+export type SpaceStatus = 'Livre' | 'Ocupada' | 'Bloqueada' | 'Reservada'
+
 /** Tipos de pessoa cadastráveis. Cada tenant escolhe os seus em personTypes. */
 export type PersonType = 'motorista' | 'morador' | 'visitante' | 'funcionario' | 'paciente' | 'acompanhante'
 
@@ -63,6 +67,7 @@ export interface TenantConfig {
   theme: ThemeTokens
   vehicleFields: VehicleFieldConfig[]
   personTypes: PersonType[]
+  spaceTypes: SpaceType[]
   dashboardCards: DashboardMetricId[]
 }
 
@@ -133,11 +138,15 @@ export interface AccessRecord {
   manual?: boolean
 }
 
+/** Vaga cadastrada no tenant (tabela vagas). */
 export interface ParkingSpace {
   id: string
+  code: string
   sector: string
-  type: 'Comum' | 'PCD' | 'Elétrico' | 'Nominal' | 'Restrito'
-  status: 'Livre' | 'Ocupada' | 'Bloqueada' | 'Reservada'
+  type: SpaceType
+  status: SpaceStatus
+  /** Texto vindo de requisitoDeUso() da subclasse de Vaga criada pelo Factory Method. */
+  requirement: string
 }
 
 export interface MedicalValidation {

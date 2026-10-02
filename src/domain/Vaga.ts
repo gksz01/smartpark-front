@@ -1,8 +1,7 @@
 import type { ParkingSpace } from '../core/types'
 
-// Reaproveita os tipos e status usados hoje na tela de Vagas.
-// 'Prioritária' é o tipo exclusivo do Hospital (pacientes e acompanhantes).
-export type TipoVaga = ParkingSpace['type'] | 'Prioritária'
+// Mesmos tipos e status da tela de Vagas (core/types.ts).
+export type TipoVaga = ParkingSpace['type']
 export type StatusVaga = ParkingSpace['status']
 
 /**
@@ -62,6 +61,11 @@ export class Vaga {
 
   desbloquear(): void {
     if (this.status === 'Bloqueada') this.status = 'Livre'
+  }
+
+  /** Só é seguro excluir uma vaga sem veículo e sem reserva. */
+  podeSerExcluida(): boolean {
+    return this.status === 'Livre' || this.status === 'Bloqueada'
   }
 
   /** PCD, elétrica, nominal, restrita ou prioritária. */
