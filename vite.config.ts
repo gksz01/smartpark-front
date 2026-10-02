@@ -7,6 +7,10 @@ export default defineConfig({
   server: {
     port: 5174,
     strictPort: true,
+    // Chamadas a /api vão para o backend Express (npm run dev:api)
+    proxy: {
+      '/api': 'http://localhost:3001',
+    },
   },
   test: {
     environment: 'jsdom',

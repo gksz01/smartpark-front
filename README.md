@@ -11,6 +11,8 @@ npm install
 npm run dev
 ```
 
+O comando `npm run dev` inicia juntos o frontend (Vite, porta 5174) e o backend (Express + SQLite, porta 3001). O Vite repassa as chamadas `/api` para o backend.
+
 Abra `http://localhost:5174/`. Na tela inicial, escolha um dos quatro clientes e um perfil compatível.
 
 Também é possível iniciar a apresentação por URL:
@@ -30,6 +32,14 @@ npm run test
 npm run build
 ```
 
-Os dados são mockados e persistidos no `localStorage`. Use o botão de restauração na barra superior para recuperar o estado inicial da demonstração.
+## Banco de dados
+
+O backend fica em `server/` e grava no arquivo SQLite `server/database/smartpark.db`, criado automaticamente com dados de demonstração na primeira execução (o arquivo não vai para o Git).
+
+- `npm run dev:api` — inicia só o backend.
+- `npm run db:reset` — recria os dados de demonstração pelo terminal.
+- O botão de restauração na barra superior chama `POST /api/reset` com o mesmo efeito.
+
+Veículos já são lidos e gravados no banco. Os demais dados ainda são mockados e o contexto (cliente, perfil e modo acadêmico) continua no `localStorage`.
 
 Consulte [docs/parte-3.md](docs/parte-3.md) para a arquitetura, matriz de variabilidade, controle de acesso e roteiro das 12 interfaces.

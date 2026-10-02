@@ -32,10 +32,7 @@ export const INITIAL_STATE: DemoState = {
   tenantId: 'shopping',
   role: 'driver',
   academicMode: true,
-  vehicles: [
-    { id: 'v-1', plate: 'SPK1A23', model: 'Honda City', color: 'Cinza', nickname: 'Meu carro', unit: 'Torre B · 804', rfidTag: 'NX-92841' },
-    { id: 'v-2', plate: 'BRA2E19', model: 'Jeep Renegade', color: 'Branco', nickname: 'Família', unit: 'Torre B · 804', rfidTag: 'NX-71520' },
-  ],
+  vehicles: [], // carregados do banco pela API (ver server/seed/seed.ts)
   reservations: [
     { id: 'res-1', parkingId: 'central', date: '2026-09-05', time: '18:30', duration: 2, vehicleId: 'v-1', estimate: 24, status: 'confirmed' },
   ],

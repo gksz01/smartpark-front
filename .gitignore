@@ -4,3 +4,7 @@ coverage
 .vite
 *.local
 *.log
+
+# Banco SQLite local (recriado pelo seed)
+server/database/*.db
+server/database/*.db-*

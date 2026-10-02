@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { TenantProvider, TenantThemeProvider } from './core/app-context'
+import { createVehicle, deleteVehicle, listVehicles, updateVehicle } from './test/fakeVehiclesApi'
 
 afterEach(() => {
   cleanup()
@@ -89,8 +90,50 @@ describe('veículos', () => {
     await user.type(screen.getByLabelText('Modelo'), 'Corolla')
     await user.type(screen.getByLabelText('Cor'), 'Preto')
     await user.click(screen.getByRole('button', { name: 'Salvar veículo' }))
-    expect(screen.getByText('Veículo cadastrado com sucesso.')).toBeInTheDocument()
+    expect(await screen.findByText('Veículo cadastrado com sucesso.')).toBeInTheDocument()
     expect(screen.getByText('Corolla')).toBeInTheDocument()
     expect(screen.getByText(/ABC1D23/)).toBeInTheDocument()
+    expect(createVehicle).toHaveBeenCalledWith('shopping', expect.objectContaining({ plate: 'ABC1D23', model: 'Corolla' }))
+  })
+
+  it('carrega pela API apenas os veículos do tenant ativo', async () => {
+    renderRoute('/app/vehicles?tenant=company&role=employee')
+    expect(await screen.findByText('Chevrolet Onix')).toBeInTheDocument()
+    expect(screen.getByText('NX-71520')).toBeInTheDocument() // campo variável da Empresa
+    expect(screen.queryByText('Honda City')).not.toBeInTheDocument() // veículo do Shopping
+    expect(listVehicles).toHaveBeenCalledWith('company')
+  })
+
+  it('edita e exclui um veículo pela API', async () => {
+    const user = userEvent.setup()
+    renderRoute('/app/vehicles?tenant=shopping&role=driver')
+    await user.click(await screen.findByRole('button', { name: /Editar/ }))
+    const modelo = screen.getByLabelText('Modelo')
+    await user.clear(modelo)
+    await user.type(modelo, 'Honda Civic')
+    await user.click(screen.getByRole('button', { name: 'Salvar veículo' }))
+    expect(await screen.findByText('Veículo atualizado com sucesso.')).toBeInTheDocument()
+    expect(screen.getByText('Honda Civic')).toBeInTheDocument()
+    expect(updateVehicle).toHaveBeenCalledWith('shopping', '1', expect.objectContaining({ model: 'Honda Civic' }))
+
+    await user.click(screen.getByRole('button', { name: 'Excluir Meu carro' }))
+    await user.click(screen.getByRole('button', { name: 'Excluir' }))
+    expect(await screen.findByText('Veículo excluído.')).toBeInTheDocument()
+    expect(screen.queryByText('Honda Civic')).not.toBeInTheDocument()
+    expect(deleteVehicle).toHaveBeenCalledWith('shopping', '1')
+  })
+
+  it('mostra no formulário o erro devolvido pela API', async () => {
+    createVehicle.mockRejectedValueOnce(new Error('Placa inválida. Use o padrão ABC1234 ou ABC1D23.'))
+    const user = userEvent.setup()
+    renderRoute('/app/vehicles?tenant=shopping&role=driver')
+    await user.click(screen.getByRole('button', { name: /Novo veículo/ }))
+    await user.type(screen.getByLabelText('Apelido'), 'Teste')
+    await user.type(screen.getByLabelText('Placa'), '1234567')
+    await user.type(screen.getByLabelText('Modelo'), 'Gol')
+    await user.type(screen.getByLabelText('Cor'), 'Prata')
+    await user.click(screen.getByRole('button', { name: 'Salvar veículo' }))
+    expect(await screen.findByText(/Placa inválida/)).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toBeInTheDocument() // o formulário continua aberto
   })
 })

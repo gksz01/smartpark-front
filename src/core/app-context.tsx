@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, useState, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { INITIAL_STATE } from '../data/mocks'
+import { resetDatabase } from '../services/api'
+import { createVehicle, deleteVehicle, listVehicles, updateVehicle, type VehicleInput } from '../services/vehiclesApi'
 import { isRole, isTenantId, TENANTS } from './config'
 import type { AccessRecord, DemoState, MedicalValidation, Payment, Reservation, Role, TenantId, Vehicle } from './types'
 
@@ -9,6 +11,7 @@ const STORAGE_KEY = 'smartpark:parte3:v1'
 type Action =
   | { type: 'SELECT_CONTEXT'; tenantId: TenantId; role: Role }
   | { type: 'SET_ACADEMIC'; enabled: boolean }
+  | { type: 'SET_VEHICLES'; vehicles: Vehicle[] }
   | { type: 'SAVE_VEHICLE'; vehicle: Vehicle }
   | { type: 'DELETE_VEHICLE'; id: string }
   | { type: 'ADD_RESERVATION'; reservation: Reservation }
@@ -21,9 +24,11 @@ function reducer(state: DemoState, action: Action): DemoState {
   switch (action.type) {
     case 'SELECT_CONTEXT': return { ...state, tenantId: action.tenantId, role: action.role }
     case 'SET_ACADEMIC': return { ...state, academicMode: action.enabled }
+    case 'SET_VEHICLES': return { ...state, vehicles: action.vehicles }
     case 'SAVE_VEHICLE': {
       const exists = state.vehicles.some((vehicle) => vehicle.id === action.vehicle.id)
-      return { ...state, vehicles: exists ? state.vehicles.map((vehicle) => vehicle.id === action.vehicle.id ? action.vehicle : vehicle) : [action.vehicle, ...state.vehicles] }
+      // Novos veículos vão para o fim, na mesma ordem em que a API devolve (ORDER BY id)
+      return { ...state, vehicles: exists ? state.vehicles.map((vehicle) => vehicle.id === action.vehicle.id ? action.vehicle : vehicle) : [...state.vehicles, action.vehicle] }
     }
     case 'DELETE_VEHICLE': return { ...state, vehicles: state.vehicles.filter((vehicle) => vehicle.id !== action.id) }
     case 'ADD_RESERVATION': return { ...state, reservations: [action.reservation, ...state.reservations] }
@@ -42,6 +47,9 @@ function readInitialState() {
   } catch {
     localStorage.removeItem(STORAGE_KEY)
   }
+
+  // Veículos vêm do banco (API), nunca do localStorage
+  state.vehicles = []
 
   if (!isTenantId(state.tenantId)) state.tenantId = INITIAL_STATE.tenantId
   if (!isRole(state.role)) state.role = INITIAL_STATE.role
@@ -75,13 +83,14 @@ interface AppContextValue {
   configurationError: string
   selectContext: (tenantId: TenantId, role: Role) => void
   setAcademicMode: (enabled: boolean) => void
-  saveVehicle: (vehicle: Vehicle) => void
-  deleteVehicle: (id: string) => void
+  vehiclesError: string
+  saveVehicle: (vehicle: VehicleInput & { id?: string }) => Promise<Vehicle>
+  deleteVehicle: (id: string) => Promise<void>
   addReservation: (reservation: Reservation) => void
   addPayment: (payment: Payment) => void
   addAccess: (access: AccessRecord) => void
   addMedicalValidation: (validation: MedicalValidation) => void
-  resetDemo: () => void
+  resetDemo: () => Promise<void>
 }
 
 const AppContext = createContext<AppContextValue | null>(null)
@@ -90,10 +99,30 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const initial = useMemo(() => readInitialState(), [])
   const [state, dispatch] = useReducer(reducer, initial.state)
   const [configurationError, setConfigurationError] = useState(initial.configurationError)
+  const [vehiclesError, setVehiclesError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
   const location = useLocation()
 
+  // READ: carrega os veículos do tenant ativo sempre que o tenant muda (ou após restaurar o banco)
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    let current = true // ignora respostas antigas se o tenant mudar antes da API responder
+    listVehicles(state.tenantId)
+      .then((vehicles) => {
+        if (!current) return
+        dispatch({ type: 'SET_VEHICLES', vehicles })
+        setVehiclesError('')
+      })
+      .catch((error: Error) => {
+        if (!current) return
+        dispatch({ type: 'SET_VEHICLES', vehicles: [] })
+        setVehiclesError(`Não foi possível carregar os veículos: ${error.message}`)
+      })
+    return () => { current = false }
+  }, [state.tenantId, reloadKey])
+
+  useEffect(() => {
+    // vehicles: undefined → os veículos não são gravados no localStorage
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, vehicles: undefined }))
     const params = new URLSearchParams(location.search)
     params.set('tenant', state.tenantId)
     params.set('role', state.role)
@@ -106,16 +135,34 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     state,
     tenant: TENANTS[state.tenantId],
     configurationError,
+    vehiclesError,
     selectContext: (tenantId, role) => { dispatch({ type: 'SELECT_CONTEXT', tenantId, role }); setConfigurationError('') },
     setAcademicMode: (enabled) => dispatch({ type: 'SET_ACADEMIC', enabled }),
-    saveVehicle: (vehicle) => dispatch({ type: 'SAVE_VEHICLE', vehicle }),
-    deleteVehicle: (id) => dispatch({ type: 'DELETE_VEHICLE', id }),
+    // CREATE (sem id) ou UPDATE (com id): primeiro grava no banco, depois atualiza a tela
+    saveVehicle: async ({ id, ...vehicle }) => {
+      const saved = id ? await updateVehicle(state.tenantId, id, vehicle) : await createVehicle(state.tenantId, vehicle)
+      dispatch({ type: 'SAVE_VEHICLE', vehicle: saved })
+      return saved
+    },
+    // DELETE: remove no banco e depois da lista
+    deleteVehicle: async (id) => {
+      await deleteVehicle(state.tenantId, id)
+      dispatch({ type: 'DELETE_VEHICLE', id })
+    },
     addReservation: (reservation) => dispatch({ type: 'ADD_RESERVATION', reservation }),
     addPayment: (payment) => dispatch({ type: 'ADD_PAYMENT', payment }),
     addAccess: (access) => dispatch({ type: 'ADD_ACCESS', access }),
     addMedicalValidation: (validation) => dispatch({ type: 'ADD_MEDICAL', validation }),
-    resetDemo: () => dispatch({ type: 'RESET' }),
-  }), [configurationError, state])
+    resetDemo: async () => {
+      try {
+        await resetDatabase()
+      } catch (error) {
+        setVehiclesError(`Não foi possível restaurar o banco: ${(error as Error).message}`)
+      }
+      dispatch({ type: 'RESET' })
+      setReloadKey((key) => key + 1)
+    },
+  }), [configurationError, state, vehiclesError])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }
