@@ -51,6 +51,39 @@ const VAGAS_INICIAIS = [
   { tenant_id: 'company', codigo: 'G-03', setor: 'Garagem', tipo: 'PCD', status: 'Livre' },
 ]
 
+/** Data de hoje no horário informado, em ISO (os acessos de demonstração são sempre "de hoje"). */
+function hojeAs(hora: number, minuto: number): string {
+  const data = new Date()
+  data.setHours(hora, minuto, 0, 0)
+  return data.toISOString()
+}
+
+/** Acessos de demonstração: o identificador segue o accessMethod de cada tenant. */
+const ACESSOS_INICIAIS = [
+  // Shopping: LPR (placa)
+  { tenant_id: 'shopping', pessoa: 'Marina Costa', identificador: 'BRA2E19', metodo: 'LPR', direcao: 'Entrada', status: 'Liberado', manual: 0, motivo_negacao: null, horario: hojeAs(14, 32) },
+  { tenant_id: 'shopping', pessoa: 'Rafael Lima', identificador: 'GHT7A42', metodo: 'LPR', direcao: 'Saída', status: 'Liberado', manual: 0, motivo_negacao: null, horario: hojeAs(14, 18) },
+  { tenant_id: 'shopping', pessoa: 'Bruno Dias', identificador: 'DFK4J86', metodo: 'LPR', direcao: 'Entrada', status: 'Pendente', manual: 0, motivo_negacao: null, horario: hojeAs(13, 54) },
+  { tenant_id: 'shopping', pessoa: 'Carlos Nunes', identificador: 'SPK1A23', metodo: 'LPR', direcao: 'Entrada', status: 'Negado', manual: 0, motivo_negacao: 'Placa sem cadastro', horario: hojeAs(13, 41) },
+  { tenant_id: 'shopping', pessoa: 'Paula Mendes', identificador: 'FGH3J21', metodo: 'LPR', direcao: 'Entrada', status: 'Liberado', manual: 1, motivo_negacao: null, horario: hojeAs(12, 10) },
+  // Condomínio: QR Code
+  { tenant_id: 'condominium', pessoa: 'Juliana Reis', identificador: 'QR-4839-221', metodo: 'QR_CODE', direcao: 'Entrada', status: 'Liberado', manual: 0, motivo_negacao: null, horario: hojeAs(14, 5) },
+  { tenant_id: 'condominium', pessoa: 'Carlos Nunes', identificador: 'QR-9912-118', metodo: 'QR_CODE', direcao: 'Entrada', status: 'Pendente', manual: 0, motivo_negacao: null, horario: hojeAs(13, 50) },
+  { tenant_id: 'condominium', pessoa: 'Entrega Rápida', identificador: 'QR-1157-620', metodo: 'QR_CODE', direcao: 'Saída', status: 'Liberado', manual: 1, motivo_negacao: null, horario: hojeAs(12, 30) },
+  { tenant_id: 'condominium', pessoa: 'Visitante não identificado', identificador: 'QR-0000-000', metodo: 'QR_CODE', direcao: 'Entrada', status: 'Negado', manual: 0, motivo_negacao: 'QR Code expirado', horario: hojeAs(11, 15) },
+  // Hospital: LPR (placa)
+  { tenant_id: 'hospital', pessoa: 'Helena Moreira', identificador: 'HSP2C34', metodo: 'LPR', direcao: 'Entrada', status: 'Liberado', manual: 0, motivo_negacao: null, horario: hojeAs(14, 40) },
+  { tenant_id: 'hospital', pessoa: 'Beatriz Souza', identificador: 'QWE1A23', metodo: 'LPR', direcao: 'Entrada', status: 'Pendente', manual: 0, motivo_negacao: null, horario: hojeAs(14, 12) },
+  { tenant_id: 'hospital', pessoa: 'Roberto Alves', identificador: 'RTY4B56', metodo: 'LPR', direcao: 'Saída', status: 'Liberado', manual: 1, motivo_negacao: null, horario: hojeAs(13, 2) },
+  { tenant_id: 'hospital', pessoa: 'João Lima', identificador: 'JKL7M89', metodo: 'LPR', direcao: 'Entrada', status: 'Negado', manual: 0, motivo_negacao: 'Vagas de visitante lotadas', horario: hojeAs(12, 45) },
+  // Empresa: RFID (tag)
+  { tenant_id: 'company', pessoa: 'Lucas Martins', identificador: 'RF-10982', metodo: 'RFID', direcao: 'Entrada', status: 'Liberado', manual: 0, motivo_negacao: null, horario: hojeAs(8, 55) },
+  { tenant_id: 'company', pessoa: 'Fernanda Rocha', identificador: 'RF-28473', metodo: 'RFID', direcao: 'Saída', status: 'Liberado', manual: 0, motivo_negacao: null, horario: hojeAs(12, 2) },
+  { tenant_id: 'company', pessoa: 'Diego Ramos', identificador: 'RF-67011', metodo: 'RFID', direcao: 'Entrada', status: 'Pendente', manual: 0, motivo_negacao: null, horario: hojeAs(13, 20) },
+  { tenant_id: 'company', pessoa: 'Ex-colaborador', identificador: 'RF-44310', metodo: 'RFID', direcao: 'Entrada', status: 'Negado', manual: 0, motivo_negacao: 'Tag desativada', horario: hojeAs(9, 10) },
+  { tenant_id: 'company', pessoa: 'Técnico de manutenção', identificador: 'RF-VISITA-01', metodo: 'RFID', direcao: 'Entrada', status: 'Liberado', manual: 1, motivo_negacao: null, horario: hojeAs(10, 30) },
+]
+
 export function popularVeiculos(db: Banco): void {
   const inserir = db.prepare(`
     INSERT INTO veiculos (tenant_id, apelido, placa, modelo, cor, unidade, tag_rfid)
@@ -75,13 +108,22 @@ export function popularVagas(db: Banco): void {
   for (const vaga of VAGAS_INICIAIS) inserir.run(vaga)
 }
 
+export function popularAcessos(db: Banco): void {
+  const inserir = db.prepare(`
+    INSERT INTO acessos (tenant_id, pessoa, identificador, metodo, direcao, status, manual, motivo_negacao, horario)
+    VALUES (@tenant_id, @pessoa, @identificador, @metodo, @direcao, @status, @manual, @motivo_negacao, @horario)
+  `)
+  for (const acesso of ACESSOS_INICIAIS) inserir.run(acesso)
+}
+
 export function popularBanco(db: Banco): void {
   popularVeiculos(db)
   popularUsuarios(db)
   popularVagas(db)
+  popularAcessos(db)
 }
 
-function tabelaVazia(db: Banco, tabela: 'veiculos' | 'usuarios' | 'vagas'): boolean {
+function tabelaVazia(db: Banco, tabela: 'veiculos' | 'usuarios' | 'vagas' | 'acessos'): boolean {
   const { total } = db.prepare(`SELECT COUNT(*) AS total FROM ${tabela}`).get() as { total: number }
   return total === 0
 }
@@ -95,6 +137,7 @@ export function popularTabelasVazias(db: Banco): string[] {
   if (tabelaVazia(db, 'veiculos')) { popularVeiculos(db); populadas.push('veiculos') }
   if (tabelaVazia(db, 'usuarios')) { popularUsuarios(db); populadas.push('usuarios') }
   if (tabelaVazia(db, 'vagas')) { popularVagas(db); populadas.push('vagas') }
+  if (tabelaVazia(db, 'acessos')) { popularAcessos(db); populadas.push('acessos') }
   return populadas
 }
 
@@ -104,7 +147,8 @@ export function resetarBanco(db: Banco): void {
     db.exec('DELETE FROM veiculos')
     db.exec('DELETE FROM usuarios')
     db.exec('DELETE FROM vagas')
-    db.exec("DELETE FROM sqlite_sequence WHERE name IN ('veiculos', 'usuarios', 'vagas')") // reinicia os ids em 1
+    db.exec('DELETE FROM acessos')
+    db.exec("DELETE FROM sqlite_sequence WHERE name IN ('veiculos', 'usuarios', 'vagas', 'acessos')") // reinicia os ids em 1
     popularBanco(db)
   })
   resetar()

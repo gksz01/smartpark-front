@@ -21,6 +21,8 @@ export type Feature =
   | 'whiteLabel'
 
 export type AccessMethod = 'LPR' | 'RFID' | 'QR_CODE' | 'MANUAL'
+export type AccessDirection = 'Entrada' | 'Saída'
+export type AccessStatus = 'Liberado' | 'Pendente' | 'Negado'
 
 /** Tipos de vaga. Cada tenant escolhe os seus em spaceTypes; cada tipo tem um Creator (Factory Method). */
 export type SpaceType = 'Comum' | 'PCD' | 'Elétrico' | 'Nominal' | 'Restrito' | 'Prioritária'
@@ -126,16 +128,19 @@ export interface Payment {
   receipt: string
 }
 
+/** Entrada ou saída registrada no tenant (tabela acessos). */
 export interface AccessRecord {
   id: string
   person: string
-  plate: string
-  qrCode: string
-  rfid: string
+  /** Placa (LPR), código (QR_CODE) ou tag (RFID), conforme o accessMethod do tenant. */
+  identifier: string
+  method: AccessMethod
+  direction: AccessDirection
+  status: AccessStatus
+  manual: boolean
+  denialReason: string
+  /** Horário no formato HH:MM, vindo de Acesso.horarioFormatado(). */
   time: string
-  direction: 'Entrada' | 'Saída'
-  status: 'Liberado' | 'Pendente' | 'Negado'
-  manual?: boolean
 }
 
 /** Vaga cadastrada no tenant (tabela vagas). */
@@ -176,6 +181,5 @@ export interface DemoState {
   vehicles: Vehicle[]
   reservations: Reservation[]
   payments: Payment[]
-  manualAccesses: AccessRecord[]
   medicalValidations: MedicalValidation[]
 }

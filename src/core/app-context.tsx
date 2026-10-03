@@ -4,7 +4,7 @@ import { INITIAL_STATE } from '../data/mocks'
 import { resetDatabase } from '../services/api'
 import { createVehicle, deleteVehicle, listVehicles, updateVehicle, type VehicleInput } from '../services/vehiclesApi'
 import { isRole, isTenantId, TENANTS } from './config'
-import type { AccessRecord, DemoState, MedicalValidation, Payment, Reservation, Role, TenantId, Vehicle } from './types'
+import type { DemoState, MedicalValidation, Payment, Reservation, Role, TenantId, Vehicle } from './types'
 
 const STORAGE_KEY = 'smartpark:parte3:v1'
 
@@ -16,7 +16,6 @@ type Action =
   | { type: 'DELETE_VEHICLE'; id: string }
   | { type: 'ADD_RESERVATION'; reservation: Reservation }
   | { type: 'ADD_PAYMENT'; payment: Payment }
-  | { type: 'ADD_ACCESS'; access: AccessRecord }
   | { type: 'ADD_MEDICAL'; validation: MedicalValidation }
   | { type: 'RESET' }
 
@@ -33,7 +32,6 @@ function reducer(state: DemoState, action: Action): DemoState {
     case 'DELETE_VEHICLE': return { ...state, vehicles: state.vehicles.filter((vehicle) => vehicle.id !== action.id) }
     case 'ADD_RESERVATION': return { ...state, reservations: [action.reservation, ...state.reservations] }
     case 'ADD_PAYMENT': return { ...state, payments: [action.payment, ...state.payments] }
-    case 'ADD_ACCESS': return { ...state, manualAccesses: [action.access, ...state.manualAccesses] }
     case 'ADD_MEDICAL': return { ...state, medicalValidations: [action.validation, ...state.medicalValidations] }
     case 'RESET': return structuredClone(INITIAL_STATE)
   }
@@ -90,7 +88,6 @@ interface AppContextValue {
   deleteVehicle: (id: string) => Promise<void>
   addReservation: (reservation: Reservation) => void
   addPayment: (payment: Payment) => void
-  addAccess: (access: AccessRecord) => void
   addMedicalValidation: (validation: MedicalValidation) => void
   resetDemo: () => Promise<void>
 }
@@ -154,7 +151,6 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     },
     addReservation: (reservation) => dispatch({ type: 'ADD_RESERVATION', reservation }),
     addPayment: (payment) => dispatch({ type: 'ADD_PAYMENT', payment }),
-    addAccess: (access) => dispatch({ type: 'ADD_ACCESS', access }),
     addMedicalValidation: (validation) => dispatch({ type: 'ADD_MEDICAL', validation }),
     resetDemo: async () => {
       try {

@@ -140,7 +140,7 @@ describe('seed de usuários', () => {
     const antigo = abrirBanco(':memory:')
     antigo.prepare("INSERT INTO veiculos (tenant_id, apelido, placa, modelo, cor) VALUES ('shopping', 'Meu', 'ABC1234', 'Gol', 'Prata')").run()
 
-    expect(popularTabelasVazias(antigo)).toEqual(['usuarios', 'vagas'])
+    expect(popularTabelasVazias(antigo)).toEqual(['usuarios', 'vagas', 'acessos'])
     const veiculos = antigo.prepare('SELECT COUNT(*) AS total FROM veiculos').get() as { total: number }
     const usuarios = antigo.prepare('SELECT COUNT(*) AS total FROM usuarios').get() as { total: number }
     antigo.close()

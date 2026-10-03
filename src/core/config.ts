@@ -1,4 +1,4 @@
-import type { DashboardMetricId, Feature, Permission, PersonType, Role, SpaceStatus, TenantConfig, TenantId } from './types'
+import type { AccessDirection, AccessMethod, AccessStatus, DashboardMetricId, Feature, Permission, PersonType, Role, SpaceStatus, TenantConfig, TenantId } from './types'
 
 export const ROLE_LABELS: Record<Role, string> = {
   driver: 'Motorista',
@@ -39,6 +39,17 @@ export const ACCESS_LABELS = {
   QR_CODE: 'QR Code',
   MANUAL: 'Liberação manual',
 } as const
+
+/** Como o identificador do acesso é chamado em cada método (sem ternários nas telas). */
+export const ACCESS_IDENTIFIERS: Record<AccessMethod, { label: string; placeholder: string }> = {
+  LPR: { label: 'Placa / LPR', placeholder: 'Ex.: ABC1D23' },
+  QR_CODE: { label: 'Código QR', placeholder: 'Ex.: QR-4839-221' },
+  RFID: { label: 'Tag RFID', placeholder: 'Ex.: RF-10982' },
+  MANUAL: { label: 'Credencial', placeholder: 'Informe a credencial' },
+}
+
+export const ACCESS_DIRECTIONS: AccessDirection[] = ['Entrada', 'Saída']
+export const ACCESS_STATUSES: AccessStatus[] = ['Liberado', 'Pendente', 'Negado']
 
 const flags = (enabled: Feature[]): Record<Feature, boolean> => ({
   reservation: enabled.includes('reservation'),

@@ -184,6 +184,12 @@ describe('Acesso', () => {
     expect(() => acesso.negar('Teste')).toThrow('já foi liberado')
   })
 
+  it('exige motivo para negar', () => {
+    const acesso = new Acesso('ac-3', 'Bruno Dias', 'DFK4J86', 'LPR', 'Entrada')
+    expect(() => acesso.negar('   ')).toThrow('Informe o motivo da negação.')
+    expect(acesso.status).toBe('Pendente')
+  })
+
   it('registra o motivo da negação e identifica liberação manual', () => {
     const acesso = new Acesso('ac-2', 'Carlos Nunes', 'RF-44310', 'RFID', 'Saída', true)
     acesso.negar('Tag expirada')

@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 import { afterEach, vi } from 'vitest'
+import { resetFakeAccess } from './fakeAccessApi'
 import { resetFakeSpaces } from './fakeSpacesApi'
 import { resetFakeUsers } from './fakeUsersApi'
 import { resetFakeVehicles } from './fakeVehiclesApi'
@@ -8,10 +9,12 @@ import { resetFakeVehicles } from './fakeVehiclesApi'
 vi.mock('../services/vehiclesApi', () => import('./fakeVehiclesApi'))
 vi.mock('../services/usersApi', () => import('./fakeUsersApi'))
 vi.mock('../services/spacesApi', () => import('./fakeSpacesApi'))
+vi.mock('../services/accessApi', () => import('./fakeAccessApi'))
 
 afterEach(() => {
   resetFakeVehicles()
   resetFakeUsers()
   resetFakeSpaces()
+  resetFakeAccess()
   vi.clearAllMocks()
 })

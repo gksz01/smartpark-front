@@ -33,3 +33,16 @@ CREATE TABLE IF NOT EXISTS vagas (
   status     TEXT    NOT NULL DEFAULT 'Livre' CHECK (status IN ('Livre', 'Ocupada', 'Bloqueada', 'Reservada')),
   UNIQUE (tenant_id, codigo)    -- o mesmo código não se repete dentro de um cliente
 );
+
+CREATE TABLE IF NOT EXISTS acessos (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id       TEXT    NOT NULL CHECK (tenant_id IN ('shopping', 'condominium', 'hospital', 'company')),
+  pessoa          TEXT    NOT NULL,
+  identificador   TEXT    NOT NULL,  -- placa, código QR ou tag RFID
+  metodo          TEXT    NOT NULL CHECK (metodo IN ('LPR', 'QR_CODE', 'RFID', 'MANUAL')),  -- a API exige o accessMethod do tenant
+  direcao         TEXT    NOT NULL CHECK (direcao IN ('Entrada', 'Saída')),
+  status          TEXT    NOT NULL CHECK (status IN ('Liberado', 'Pendente', 'Negado')),
+  manual          INTEGER NOT NULL DEFAULT 0 CHECK (manual IN (0, 1)),  -- 1 = liberação manual do operador
+  motivo_negacao  TEXT,
+  horario         TEXT    NOT NULL   -- data e hora em ISO 8601
+);

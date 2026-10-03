@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { TenantProvider, TenantThemeProvider } from './core/app-context'
+import { createAccess, deleteAccess, listAccess, updateAccess } from './test/fakeAccessApi'
 import { createSpace, deleteSpace, listSpaces, updateSpace } from './test/fakeSpacesApi'
 import { createUser, deleteUser, listUsers, updateUser } from './test/fakeUsersApi'
 import { createVehicle, deleteVehicle, listVehicles, updateVehicle } from './test/fakeVehiclesApi'
@@ -338,5 +339,103 @@ describe('vagas', () => {
     expect(tiposDoFormulario()).toEqual(['Comum', 'PCD', 'Elétrico'])
     expect(tiposDoFormulario()).not.toContain('Prioritária')
     expect(tiposDoFormulario()).not.toContain('Nominal')
+  })
+})
+
+describe('acessos (entradas e saídas)', () => {
+  it('lista os acessos do tenant vindos da API, com status e motivo', async () => {
+    renderRoute('/admin/access?tenant=shopping&role=admin')
+    expect(await screen.findByText('BRA2E19')).toBeInTheDocument()
+    expect(screen.getByText('Placa sem cadastro')).toBeInTheDocument()
+    expect(screen.getByText('3 acessos exibidos')).toBeInTheDocument()
+    expect(listAccess).toHaveBeenCalledWith('shopping')
+  })
+
+  it('registra uma liberação manual com o método do tenant', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/access?tenant=company&role=operator')
+    await user.click(screen.getByRole('button', { name: /Liberação manual/ }))
+    await user.type(screen.getByLabelText('Nome do usuário'), 'Ana Prado')
+    await user.type(screen.getByLabelText('Tag RFID'), 'RF-55555')
+    await user.selectOptions(screen.getByLabelText('Movimento'), 'Saída')
+    await user.click(screen.getByRole('button', { name: 'Confirmar liberação' }))
+    expect(await screen.findByText('Saída de Ana Prado liberada manualmente.')).toBeInTheDocument()
+    expect(screen.getByText('RF-55555')).toBeInTheDocument()
+    expect(createAccess).toHaveBeenCalledWith('company', { person: 'Ana Prado', identifier: 'RF-55555', direction: 'Saída', status: 'Liberado', denialReason: '', method: 'RFID' })
+  })
+
+  it('edita um acesso pendente e o nega com motivo', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/access?tenant=shopping&role=admin')
+    await user.click(await screen.findByRole('button', { name: 'Editar acesso de Bruno Dias' }))
+    await user.selectOptions(screen.getByLabelText('Status'), 'Negado')
+    await user.type(screen.getByLabelText('Motivo da negação'), 'Veículo não autorizado')
+    await user.click(screen.getByRole('button', { name: 'Salvar acesso' }))
+    expect(await screen.findByText('Acesso de Bruno Dias atualizado.')).toBeInTheDocument()
+    expect(screen.getByText('Veículo não autorizado')).toBeInTheDocument()
+    expect(updateAccess).toHaveBeenCalledWith('shopping', '2', expect.objectContaining({ status: 'Negado', denialReason: 'Veículo não autorizado', method: 'LPR' }))
+  })
+
+  it('não deixa mudar o status de um acesso já decidido', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/access?tenant=shopping&role=admin')
+    await user.click(await screen.findByRole('button', { name: 'Editar acesso de Marina Costa' }))
+    expect(screen.getByLabelText(/^Status/)).toBeDisabled()
+    expect(screen.getByText('Acesso já liberado: o status não pode mais mudar.')).toBeInTheDocument()
+  })
+
+  it('exclui um registro de acesso', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/access?tenant=shopping&role=admin')
+    await user.click(await screen.findByRole('button', { name: 'Excluir acesso de Marina Costa' }))
+    await user.click(screen.getByRole('button', { name: 'Excluir' }))
+    expect(await screen.findByText('Registro de acesso excluído.')).toBeInTheDocument()
+    expect(screen.queryByText('BRA2E19')).not.toBeInTheDocument()
+    expect(deleteAccess).toHaveBeenCalledWith('shopping', '1')
+  })
+
+  it('mostra o erro devolvido pela API', async () => {
+    updateAccess.mockRejectedValueOnce(new Error('Informe o motivo da negação.'))
+    const user = userEvent.setup()
+    renderRoute('/admin/access?tenant=shopping&role=admin')
+    await user.click(await screen.findByRole('button', { name: 'Editar acesso de Bruno Dias' }))
+    await user.click(screen.getByRole('button', { name: 'Salvar acesso' }))
+    expect(await screen.findByText('Informe o motivo da negação.')).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('ao trocar de tenant, carrega os acessos do novo tenant', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/access?tenant=shopping&role=admin')
+    expect(await screen.findByText('BRA2E19')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('link', { name: /Trocar contexto/ }))
+    await user.click(screen.getByRole('button', { name: /Horizonte/ }))
+    await user.click(screen.getByRole('button', { name: /Entrar como Administrador/ }))
+    await user.click(await screen.findByRole('link', { name: /Entradas e saídas/ }))
+
+    expect(await screen.findByText('QR-4839-221')).toBeInTheDocument()
+    expect(screen.queryByText('BRA2E19')).not.toBeInTheDocument()
+    expect(listAccess).toHaveBeenLastCalledWith('condominium')
+  })
+
+  it('o identificador muda conforme o accessMethod do tenant', async () => {
+    const user = userEvent.setup()
+    const rotuloDoIdentificador = async (tenant: string) => {
+      renderRoute(`/admin/access?tenant=${tenant}&role=admin`)
+      await user.click(screen.getByRole('button', { name: /Liberação manual/ }))
+      const rotulos = Array.from(screen.getByRole('dialog').querySelectorAll('.form-field > span')).map((span) => span.textContent)
+      cleanup()
+      return rotulos[1]
+    }
+    expect(await rotuloDoIdentificador('shopping')).toBe('Placa / LPR')
+    expect(await rotuloDoIdentificador('condominium')).toBe('Código QR')
+    expect(await rotuloDoIdentificador('company')).toBe('Tag RFID')
+  })
+
+  it('o dashboard mostra a atividade recente com os acessos do banco', async () => {
+    renderRoute('/admin/dashboard?tenant=hospital&role=admin')
+    expect(await screen.findByText('Helena Moreira')).toBeInTheDocument()
+    expect(listAccess).toHaveBeenCalledWith('hospital')
   })
 })

@@ -1,10 +1,10 @@
 import { Activity, AlertTriangle, ArrowRight, BadgeCheck, Car, Check, CircleDollarSign, CircleParking, Clock3, DoorOpen, Edit3, HeartHandshake, LogIn, LogOut, Palette, Plus, ShieldCheck, Stethoscope, TicketCheck, Trash2, UserRound, UsersRound, X } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useTenant } from '../../core/app-context'
-import { ACCESS_LABELS, FEATURE_LABELS, METRIC_LABELS, METRIC_VALUES, ROLE_LABELS, SPACE_STATUSES } from '../../core/config'
+import { ACCESS_DIRECTIONS, ACCESS_IDENTIFIERS, ACCESS_LABELS, ACCESS_STATUSES, FEATURE_LABELS, METRIC_LABELS, METRIC_VALUES, ROLE_LABELS, SPACE_STATUSES } from '../../core/config'
 import { RoleGate } from '../../core/gates'
-import type { AccessRecord, DashboardMetricId, MedicalValidation, ParkingSpace, SpaceStatus, SpaceType } from '../../core/types'
-import { ACCESS_RECORDS } from '../../data/mocks'
+import type { AccessDirection, AccessRecord, AccessStatus, DashboardMetricId, MedicalValidation, ParkingSpace, SpaceStatus, SpaceType } from '../../core/types'
+import { createAccess, deleteAccess, listAccess, updateAccess } from '../../services/accessApi'
 import { createSpace, deleteSpace, listSpaces, updateSpace, type SpaceInput } from '../../services/spacesApi'
 import { Alert, Button, Card, ConfirmDialog, DataTable, FormField, PageHeader, StatCard, StatusBadge, VariationInfo, type Column } from '../../shared/ui'
 
@@ -13,12 +13,23 @@ const METRIC_ICONS: Record<DashboardMetricId, typeof Activity> = {
 }
 
 export function DashboardPage() {
-  const { tenant, state } = useTenant()
-  const occupancy = 286 + state.manualAccesses.filter((access) => access.direction === 'Entrada').length
+  const { tenant, dataVersion } = useTenant()
+  const [accesses, setAccesses] = useState<AccessRecord[]>([])
+
+  // Atividade recente: os mesmos acessos gravados no banco (tela Entradas e saídas)
+  useEffect(() => {
+    let current = true
+    listAccess(tenant.id)
+      .then((list) => { if (current) setAccesses(list) })
+      .catch(() => { if (current) setAccesses([]) })
+    return () => { current = false }
+  }, [tenant.id, dataVersion])
+
+  const occupancy = 286 + accesses.filter((access) => access.manual && access.direction === 'Entrada').length
   return <div className="admin-page"><PageHeader eyebrow="Operação em tempo real" title={`Visão geral · ${tenant.shortName}`} description="Indicadores essenciais para a tomada de decisão de hoje." action={<div className="live-badge"><span /> Atualizado agora</div>} />
     <VariationInfo>O dashboard é uma única grade. A lista `dashboardCards` de cada tenant escolhe reservas, faturamento, convênios, visitantes ou funcionários.</VariationInfo>
     <div className="stats-grid">{tenant.dashboardCards.map((metric) => { const Icon = METRIC_ICONS[metric]; const value = metric === 'occupancy' ? `${Math.round((occupancy / 420) * 100)}%` : METRIC_VALUES[metric]; return <StatCard key={metric} label={METRIC_LABELS[metric].label} value={value} helper={METRIC_LABELS[metric].helper} icon={<Icon size={20} />} /> })}</div>
-    <div className="dashboard-grid"><Card className="occupancy-card"><div className="content-heading"><div><p className="eyebrow">Distribuição por setor</p><h2>Ocupação do estacionamento</h2></div><StatusBadge tone="success">Operação normal</StatusBadge></div><div className="donut-wrap"><div className="donut" style={{ '--percent': '68%' } as React.CSSProperties}><div><strong>68%</strong><span>ocupado</span></div></div><div className="sector-bars">{[['Setor A', 82], ['Setor B', 64], ['Setor C', 47]].map(([sector, value]) => <div key={sector}><div><span>{sector}</span><strong>{value}%</strong></div><div className="mini-bar"><span style={{ width: `${value}%` }} /></div></div>)}</div></div></Card><Card><div className="content-heading"><div><p className="eyebrow">Últimos eventos</p><h2>Atividade recente</h2></div></div><div className="activity-feed">{[...state.manualAccesses, ...ACCESS_RECORDS].slice(0, 4).map((access) => <div key={access.id}><span className={`activity-dot ${access.status.toLowerCase()}`} /> <div><strong>{access.person}</strong><p>{access.direction} · {access.time}</p></div><StatusBadge tone={access.status === 'Liberado' ? 'success' : access.status === 'Pendente' ? 'warning' : 'danger'}>{access.status}</StatusBadge></div>)}</div></Card></div>
+    <div className="dashboard-grid"><Card className="occupancy-card"><div className="content-heading"><div><p className="eyebrow">Distribuição por setor</p><h2>Ocupação do estacionamento</h2></div><StatusBadge tone="success">Operação normal</StatusBadge></div><div className="donut-wrap"><div className="donut" style={{ '--percent': '68%' } as React.CSSProperties}><div><strong>68%</strong><span>ocupado</span></div></div><div className="sector-bars">{[['Setor A', 82], ['Setor B', 64], ['Setor C', 47]].map(([sector, value]) => <div key={sector}><div><span>{sector}</span><strong>{value}%</strong></div><div className="mini-bar"><span style={{ width: `${value}%` }} /></div></div>)}</div></div></Card><Card><div className="content-heading"><div><p className="eyebrow">Últimos eventos</p><h2>Atividade recente</h2></div></div><div className="activity-feed">{accesses.slice(0, 4).map((access) => <div key={access.id}><span className={`activity-dot ${access.status.toLowerCase()}`} /> <div><strong>{access.person}</strong><p>{access.direction} · {access.time}</p></div><StatusBadge tone={access.status === 'Liberado' ? 'success' : access.status === 'Pendente' ? 'warning' : 'danger'}>{access.status}</StatusBadge></div>)}</div></Card></div>
   </div>
 }
 
@@ -211,29 +222,184 @@ export function SpacesPage() {
   )
 }
 
+const EMPTY_ACCESS_FORM = { person: '', identifier: '', direction: 'Entrada' as AccessDirection, status: 'Liberado' as AccessStatus, denialReason: '' }
+
 export function AccessPage() {
-  const { tenant, state, addAccess } = useTenant()
+  const { tenant, dataVersion } = useTenant()
+  const [rows, setRows] = useState<AccessRecord[]>([])
+  const [editing, setEditing] = useState<AccessRecord | null>(null)
+  const [form, setForm] = useState(EMPTY_ACCESS_FORM)
   const [open, setOpen] = useState(false)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
-  const [form, setForm] = useState({ person: '', identifier: '', direction: 'Entrada' as 'Entrada' | 'Saída' })
-  const rows = [...state.manualAccesses, ...ACCESS_RECORDS]
-  const identifierLabel = tenant.accessMethod === 'LPR' ? 'Placa / LPR' : tenant.accessMethod === 'QR_CODE' ? 'Código QR' : 'Tag RFID'
-  const identifierFor = (row: AccessRecord) => tenant.accessMethod === 'LPR' ? row.plate : tenant.accessMethod === 'QR_CODE' ? row.qrCode : row.rfid
+  const [error, setError] = useState('')
+  // Rótulo e exemplo do identificador vêm do accessMethod do tenant (placa, QR ou RFID)
+  const identifier = ACCESS_IDENTIFIERS[tenant.accessMethod]
+
+  // READ: carrega os acessos do tenant ativo (e de novo após "Restaurar dados")
+  useEffect(() => {
+    let current = true
+    listAccess(tenant.id)
+      .then((list) => {
+        if (!current) return
+        setRows(list)
+        setError('')
+      })
+      .catch((failure: Error) => {
+        if (!current) return
+        setRows([])
+        setError(`Não foi possível carregar os acessos: ${failure.message}`)
+      })
+    return () => { current = false }
+  }, [tenant.id, dataVersion])
+
+  const openCreate = () => {
+    setEditing(null)
+    setForm(EMPTY_ACCESS_FORM)
+    setOpen(true)
+    setMessage('')
+    setError('')
+  }
+  const openEdit = (row: AccessRecord) => {
+    setEditing(row)
+    setForm({ person: row.person, identifier: row.identifier, direction: row.direction, status: row.status, denialReason: row.denialReason })
+    setOpen(true)
+    setMessage('')
+    setError('')
+  }
+  const close = () => setOpen(false)
+
+  // CREATE (liberação manual) / UPDATE (editar ou decidir um acesso pendente)
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    const input = { ...form, method: tenant.accessMethod }
+    try {
+      if (editing) {
+        const updated = await updateAccess(tenant.id, editing.id, input)
+        setRows((current) => current.map((row) => row.id === updated.id ? updated : row))
+        setMessage(`Acesso de ${updated.person} atualizado.`)
+      } else {
+        const created = await createAccess(tenant.id, input)
+        setRows((current) => [created, ...current])
+        setMessage(`${created.direction} de ${created.person} liberada manualmente.`)
+      }
+      setOpen(false)
+    } catch (failure) {
+      setError((failure as Error).message)
+    }
+  }
+
+  // DELETE
+  const confirmDelete = async (id: string) => {
+    setDeleteId(null)
+    try {
+      await deleteAccess(tenant.id, id)
+      setRows((current) => current.filter((row) => row.id !== id))
+      setMessage('Registro de acesso excluído.')
+    } catch (failure) {
+      setError((failure as Error).message)
+    }
+  }
+
+  // Regra da classe Acesso: só um acesso Pendente pode ser liberado ou negado
+  const statusLocked = editing !== null && editing.status !== 'Pendente'
+
   const columns: Column<AccessRecord>[] = [
-    { header: 'Identificação', render: (row) => <div><strong>{identifierFor(row)}</strong>{row.manual && <small className="table-subtitle">Liberação manual</small>}</div> },
+    { header: 'Identificação', render: (row) => <div><strong>{row.identifier}</strong>{row.manual && <small className="table-subtitle">Liberação manual</small>}</div> },
     { header: 'Usuário', render: (row) => row.person },
     { header: 'Horário', render: (row) => <span className="inline-flex items-center gap-1.5"><Clock3 size={14} />{row.time}</span> },
     { header: 'Movimento', render: (row) => <span className="inline-flex items-center gap-1.5">{row.direction === 'Entrada' ? <LogIn size={15} /> : <LogOut size={15} />}{row.direction}</span> },
-    { header: 'Status', render: (row) => <StatusBadge tone={row.status === 'Liberado' ? 'success' : row.status === 'Pendente' ? 'warning' : 'danger'}>{row.status}</StatusBadge> },
+    { header: 'Status', render: (row) => <div><StatusBadge tone={row.status === 'Liberado' ? 'success' : row.status === 'Pendente' ? 'warning' : 'danger'}>{row.status}</StatusBadge>{row.denialReason && <small className="table-subtitle">{row.denialReason}</small>}</div> },
+    {
+      header: 'Ações',
+      render: (row) => (
+        <RoleGate roles={['operator', 'admin']}>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => openEdit(row)} aria-label={`Editar acesso de ${row.person}`}><Edit3 size={16} /> Editar</Button>
+            <Button variant="ghost" onClick={() => setDeleteId(row.id)} aria-label={`Excluir acesso de ${row.person}`}><Trash2 size={16} /> Excluir</Button>
+          </div>
+        </RoleGate>
+      ),
+    },
   ]
-  const submit = (event: FormEvent) => { event.preventDefault(); const record: AccessRecord = { id: crypto.randomUUID(), person: form.person, plate: tenant.accessMethod === 'LPR' ? form.identifier.toUpperCase() : 'MANUAL', qrCode: tenant.accessMethod === 'QR_CODE' ? form.identifier : 'MANUAL', rfid: tenant.accessMethod === 'RFID' ? form.identifier : 'MANUAL', time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }), direction: form.direction, status: 'Liberado', manual: true }; addAccess(record); setOpen(false); setMessage(`${form.direction} de ${form.person} liberada manualmente.`); setForm({ person: '', identifier: '', direction: 'Entrada' }) }
-  return <div className="admin-page"><PageHeader eyebrow="Portaria inteligente" title="Entradas e saídas" description={`Identificação principal: ${ACCESS_LABELS[tenant.accessMethod]}.`} action={<RoleGate roles={['operator', 'admin']}><Button onClick={() => setOpen(true)}><DoorOpen size={17} /> Liberação manual</Button></RoleGate>} />
-    <VariationInfo>A coluna de identificação acompanha `accessMethod`: placa no LPR, código no QR Code e tag no RFID. A ação manual permanece reutilizável para perfis autorizados.</VariationInfo>
-    {message && <Alert>{message}</Alert>}
-    <div className="access-kpis"><Card><span><LogIn /></span><div><strong>284</strong><small>Entradas hoje</small></div></Card><Card><span><LogOut /></span><div><strong>231</strong><small>Saídas hoje</small></div></Card><Card><span><ShieldCheck /></span><div><strong>98,7%</strong><small>Liberações automáticas</small></div></Card></div>
-    <Card><div className="table-toolbar"><div><h2>Fluxo recente</h2><p>{rows.length} acessos exibidos</p></div><StatusBadge tone="info">{identifierLabel}</StatusBadge></div><DataTable rows={rows} columns={columns} /></Card>
-    {open && <div className="modal-backdrop"><form className="modal" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="access-title"><button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Fechar"><X size={18} /></button><p className="eyebrow">Ação de operador</p><h2 id="access-title">Liberação manual</h2><p>Registre uma exceção auditável para entrada ou saída.</p><div className="mt-6 space-y-4"><FormField label="Nome do usuário"><input required value={form.person} onChange={(event) => setForm({ ...form, person: event.target.value })} placeholder="Nome completo" /></FormField><FormField label={identifierLabel}><input required value={form.identifier} onChange={(event) => setForm({ ...form, identifier: event.target.value })} placeholder="Informe a credencial" /></FormField><FormField label="Movimento"><select value={form.direction} onChange={(event) => setForm({ ...form, direction: event.target.value as 'Entrada' | 'Saída' })}><option>Entrada</option><option>Saída</option></select></FormField></div><Button type="submit" className="mt-6 w-full justify-center">Confirmar liberação</Button></form></div>}
-  </div>
+
+  return (
+    <div className="admin-page">
+      <PageHeader
+        eyebrow="Portaria inteligente"
+        title="Entradas e saídas"
+        description={`Identificação principal: ${ACCESS_LABELS[tenant.accessMethod]}.`}
+        action={<RoleGate roles={['operator', 'admin']}><Button onClick={openCreate}><DoorOpen size={17} /> Liberação manual</Button></RoleGate>}
+      />
+      <VariationInfo>
+        A coluna de identificação acompanha `accessMethod`: placa no LPR, código no QR Code e tag no RFID. A ação manual permanece reutilizável para perfis autorizados.
+      </VariationInfo>
+      {message && <Alert>{message}</Alert>}
+      {error && !open && <Alert tone="danger">{error}</Alert>}
+      <div className="access-kpis">
+        <Card><span><LogIn /></span><div><strong>284</strong><small>Entradas hoje</small></div></Card>
+        <Card><span><LogOut /></span><div><strong>231</strong><small>Saídas hoje</small></div></Card>
+        <Card><span><ShieldCheck /></span><div><strong>98,7%</strong><small>Liberações automáticas</small></div></Card>
+      </div>
+      <Card>
+        <div className="table-toolbar">
+          <div>
+            <h2>Fluxo recente</h2>
+            <p>{rows.length} acessos exibidos</p>
+          </div>
+          <StatusBadge tone="info">{identifier.label}</StatusBadge>
+        </div>
+        <DataTable rows={rows} columns={columns} emptyMessage="Nenhum acesso registrado." />
+      </Card>
+
+      {open && (
+        <div className="modal-backdrop">
+          <form className="modal" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="access-title">
+            <button type="button" className="modal-close" onClick={close} aria-label="Fechar"><X size={18} /></button>
+            <p className="eyebrow">Ação de operador</p>
+            <h2 id="access-title">{editing ? 'Editar acesso' : 'Liberação manual'}</h2>
+            <p>{editing ? 'Corrija os dados ou decida um acesso pendente.' : 'Registre uma exceção auditável para entrada ou saída.'}</p>
+            <div className="mt-6 space-y-4">
+              <FormField label="Nome do usuário">
+                <input required value={form.person} onChange={(event) => setForm({ ...form, person: event.target.value })} placeholder="Nome completo" />
+              </FormField>
+              <FormField label={identifier.label}>
+                <input required value={form.identifier} onChange={(event) => setForm({ ...form, identifier: event.target.value })} placeholder={identifier.placeholder} />
+              </FormField>
+              <FormField label="Movimento">
+                <select value={form.direction} onChange={(event) => setForm({ ...form, direction: event.target.value as AccessDirection })}>
+                  {ACCESS_DIRECTIONS.map((item) => <option key={item}>{item}</option>)}
+                </select>
+              </FormField>
+              {editing && (
+                <FormField label="Status" hint={statusLocked ? `Acesso já ${editing.status.toLowerCase()}: o status não pode mais mudar.` : undefined}>
+                  <select value={form.status} disabled={statusLocked} onChange={(event) => setForm({ ...form, status: event.target.value as AccessStatus })}>
+                    {ACCESS_STATUSES.map((item) => <option key={item}>{item}</option>)}
+                  </select>
+                </FormField>
+              )}
+              {form.status === 'Negado' && (
+                <FormField label="Motivo da negação">
+                  <input required value={form.denialReason} onChange={(event) => setForm({ ...form, denialReason: event.target.value })} placeholder="Ex.: Credencial expirada" />
+                </FormField>
+              )}
+            </div>
+            {error && <div className="mt-5"><Alert tone="danger">{error}</Alert></div>}
+            <Button type="submit" className="mt-6 w-full justify-center">{editing ? 'Salvar acesso' : 'Confirmar liberação'}</Button>
+          </form>
+        </div>
+      )}
+
+      {deleteId && (
+        <ConfirmDialog
+          title="Excluir registro de acesso?"
+          description="O registro será removido do histórico de entradas e saídas."
+          onCancel={() => setDeleteId(null)}
+          onConfirm={() => confirmDelete(deleteId)}
+        />
+      )}
+    </div>
+  )
 }
 
 export function ConfigurationPage() {

@@ -1,8 +1,8 @@
-import type { AccessMethod } from '../core/types'
+import type { AccessDirection, AccessMethod, AccessStatus } from '../core/types'
 
-// Mesmos valores exibidos hoje na tela de Entradas e saídas.
-export type DirecaoAcesso = 'Entrada' | 'Saída'
-export type StatusAcesso = 'Liberado' | 'Pendente' | 'Negado'
+// Mesmos valores da tela de Entradas e saídas (core/types.ts).
+export type DirecaoAcesso = AccessDirection
+export type StatusAcesso = AccessStatus
 
 /**
  * Registro de uma entrada ou saída na portaria.
@@ -41,8 +41,11 @@ export class Acesso {
     if (this.status !== 'Pendente') {
       throw new Error(`Este acesso já foi ${this.status.toLowerCase()}.`)
     }
+    if (!motivo.trim()) {
+      throw new Error('Informe o motivo da negação.')
+    }
     this.status = 'Negado'
-    this.motivoNegacao = motivo
+    this.motivoNegacao = motivo.trim()
   }
 
   /** Liberação feita por um operador, fora da leitura automática. */
