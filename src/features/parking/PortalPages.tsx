@@ -1,8 +1,8 @@
 import { ArrowLeft, ArrowRight, CalendarDays, Car, Check, Clock3, CreditCard, Edit3, KeyRound, MapPin, Navigation, QrCode, RotateCcw, Search, ShieldCheck, Sparkles, TicketCheck, Trash2, UserRoundCheck, WalletCards, XCircle, Zap } from 'lucide-react'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTenant } from '../../core/app-context'
-import { ACCESS_LABELS, PAYMENT_METHODS, PAYMENT_STATUS_LABELS, RESERVATION_STATUS_LABELS } from '../../core/config'
+import { ACCESS_LABELS, PAYMENT_METHODS, TENANTS, PAYMENT_STATUS_LABELS, RESERVATION_STATUS_LABELS } from '../../core/config'
 import { FeatureGate } from '../../core/gates'
 import type { Agreement, AttendanceCheck, Parking, ParkingSpace, Payment, PaymentMethod, Reservation, Tariff, TenantId } from '../../core/types'
 import { Convenio } from '../../domain/Convenio'
@@ -21,6 +21,7 @@ import { listTariffs } from '../../services/tariffsApi'
 import { FormModal } from '../../shared/crud/FormModal'
 import { RowActions } from '../../shared/crud/RowActions'
 import { SelectField } from '../../shared/crud/SelectField'
+import { useTenantData } from '../../shared/crud/useTenantData'
 import { Alert, Button, Card, ConfirmDialog, DataTable, EmptyState, FormField, OccupancyBar, PageHeader, StatusBadge, VariationInfo, type Column } from '../../shared/ui'
 import { formatarDataIso, formatarMoeda } from '../../domain/formatacao'
 
@@ -105,12 +106,14 @@ async function loadReservationData(tenantId: TenantId) {
   return { reservations, freeSpaces: spaces.filter((space) => space.status === 'Livre'), tarifa: activeTarifa(tariffs) }
 }
 
+const EMPTY_RESERVATION_DATA = { reservations: [] as Reservation[], freeSpaces: [] as ParkingSpace[], tarifa: null as Tarifa | null }
+
 export function ReservationPage() {
-  const { state, tenant, dataVersion } = useTenant()
+  const { state, tenant } = useTenant()
   const navigate = useNavigate()
-  const [reservations, setReservations] = useState<Reservation[]>([])
-  const [freeSpaces, setFreeSpaces] = useState<ParkingSpace[]>([])
-  const [tarifa, setTarifa] = useState<Tarifa | null>(null)
+  // READ: reservas, vagas livres e tarifa ativa do tenant
+  const { data, setData, error: loadError, reload } = useTenantData(loadReservationData, EMPTY_RESERVATION_DATA, 'Não foi possível carregar as reservas')
+  const { reservations, freeSpaces, tarifa } = data
   const [saved, setSaved] = useState<Reservation | null>(null)
   const [form, setForm] = useState({ date: formatarDataIso(new Date()), time: '18:30', duration: '2', vehicleId: '', spaceId: '' })
   const [editing, setEditing] = useState<Reservation | null>(null)
@@ -123,32 +126,6 @@ export function ReservationPage() {
   const vehicleId = form.vehicleId || state.vehicles[0]?.id || ''
   const spaceId = freeSpaces.some((space) => space.id === form.spaceId) ? form.spaceId : freeSpaces[0]?.id ?? ''
   const estimate = previewEstimate(tarifa, form.date, form.time, Number(form.duration))
-
-  // READ: carrega reservas, vagas livres e tarifa ativa do tenant
-  useEffect(() => {
-    let current = true
-    loadReservationData(tenant.id)
-      .then((data) => {
-        if (!current) return
-        setReservations(data.reservations)
-        setFreeSpaces(data.freeSpaces)
-        setTarifa(data.tarifa)
-        setError('')
-      })
-      .catch((failure: Error) => {
-        if (!current) return
-        setReservations([])
-        setError(`Não foi possível carregar as reservas: ${failure.message}`)
-      })
-    return () => { current = false }
-  }, [tenant.id, dataVersion])
-
-  const reload = async () => {
-    const data = await loadReservationData(tenant.id)
-    setReservations(data.reservations)
-    setFreeSpaces(data.freeSpaces)
-    setTarifa(data.tarifa)
-  }
 
   // CREATE: a API calcula com a Strategy e confirma pelo Observer (vaga → Reservada)
   const submit = async (event: FormEvent) => {
@@ -205,7 +182,7 @@ export function ReservationPage() {
     setMessage('')
     try {
       await deleteReservation(tenant.id, id)
-      setReservations((current) => current.filter((reservation) => reservation.id !== id))
+      setData((current) => ({ ...current, reservations: current.reservations.filter((reservation) => reservation.id !== id) }))
       setMessage('Reserva excluída.')
     } catch (failure) {
       setError((failure as Error).message)
@@ -244,7 +221,7 @@ export function ReservationPage() {
         passa pelo Observer EventosReserva, que reserva a vaga e gera a notificação.
       </VariationInfo>
       {message && <Alert>{message}</Alert>}
-      {error && !editing && <Alert tone="danger">{error}</Alert>}
+      {(error || loadError) && !editing && <Alert tone="danger">{error || loadError}</Alert>}
 
       {saved ? (
         <Card className="success-panel">
@@ -358,7 +335,8 @@ function previewPayment(tarifa: Tarifa | null, convenio: Convenio | null, durati
 }
 
 /** Histórico, tarifa ativa e (com medicalAgreement) convênios do tenant. */
-async function loadPaymentData(tenantId: TenantId, withAgreements: boolean) {
+async function loadPaymentData(tenantId: TenantId) {
+  const withAgreements = TENANTS[tenantId].features.medicalAgreement
   const [payments, tariffs, agreements] = await Promise.all([
     listPayments(tenantId),
     listTariffs(tenantId).catch(() => [] as Tariff[]),
@@ -367,12 +345,14 @@ async function loadPaymentData(tenantId: TenantId, withAgreements: boolean) {
   return { payments, tarifa: activeTarifa(tariffs), agreements }
 }
 
+const EMPTY_PAYMENT_DATA = { payments: [] as Payment[], tarifa: null as Tarifa | null, agreements: [] as Agreement[] }
+
 export function PaymentsPage() {
-  const { state, tenant, dataVersion } = useTenant()
+  const { state, tenant } = useTenant()
   const withAgreements = tenant.features.medicalAgreement
-  const [payments, setPayments] = useState<Payment[]>([])
-  const [tarifa, setTarifa] = useState<Tarifa | null>(null)
-  const [agreements, setAgreements] = useState<Agreement[]>([])
+  // READ: histórico, tarifa ativa e (com medicalAgreement) convênios
+  const { data, setData, error: loadError, reload } = useTenantData(loadPaymentData, EMPTY_PAYMENT_DATA, 'Não foi possível carregar os pagamentos')
+  const { payments, tarifa, agreements } = data
   const [form, setForm] = useState({ vehicleId: '', duration: '2', method: 'Pix' as PaymentMethod, installments: '1', attendanceNumber: '' })
   const [check, setCheck] = useState<AttendanceCheck | null>(null)
   const [receipt, setReceipt] = useState<Payment | null>(null)
@@ -386,32 +366,6 @@ export function PaymentsPage() {
   const agreement = check?.eligible ? agreements.find((item) => item.name === check.agreement) : undefined
   const convenio = agreement ? new Convenio(agreement.id, agreement.name, agreement.benefitType, agreement.benefitValue, agreement.active) : null
   const preview = previewPayment(tarifa, convenio, Number(form.duration), form.method, installments)
-
-  // READ: histórico e tarifa ativa (e de novo após "Restaurar dados")
-  useEffect(() => {
-    let current = true
-    loadPaymentData(tenant.id, withAgreements)
-      .then((data) => {
-        if (!current) return
-        setPayments(data.payments)
-        setTarifa(data.tarifa)
-        setAgreements(data.agreements)
-        setError('')
-      })
-      .catch((failure: Error) => {
-        if (!current) return
-        setPayments([])
-        setError(`Não foi possível carregar os pagamentos: ${failure.message}`)
-      })
-    return () => { current = false }
-  }, [tenant.id, withAgreements, dataVersion])
-
-  const reload = async () => {
-    const data = await loadPaymentData(tenant.id, withAgreements)
-    setPayments(data.payments)
-    setTarifa(data.tarifa)
-    setAgreements(data.agreements)
-  }
 
   // Verificar atendimento (Hospital): a API usa Atendimento.validarElegibilidade(), sem consumir o benefício
   const verify = async () => {
@@ -464,7 +418,7 @@ export function PaymentsPage() {
     setMessage('')
     try {
       await deletePayment(tenant.id, id)
-      setPayments((current) => current.filter((payment) => payment.id !== id))
+      setData((current) => ({ ...current, payments: current.payments.filter((payment) => payment.id !== id) }))
       setMessage('Pagamento excluído.')
     } catch (failure) {
       setError((failure as Error).message)
@@ -497,7 +451,7 @@ export function PaymentsPage() {
         (Pix, Crédito ou Débito). Com `medicalAgreement` (Hospital), o Nº do atendimento aplica TarifaComConvenio e consome o benefício.
       </VariationInfo>
       {message && <Alert>{message}</Alert>}
-      {error && <Alert tone="danger">{error}</Alert>}
+      {(error || loadError) && <Alert tone="danger">{error || loadError}</Alert>}
 
       {receipt ? (
         <Card className="success-panel">

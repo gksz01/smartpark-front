@@ -1,92 +1,37 @@
 import { Plus } from 'lucide-react'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState } from 'react'
 import { useTenant } from '../../core/app-context'
 import { PERSON_TYPE_LABELS, ROLE_LABELS } from '../../core/config'
 import type { PersonType, Role, User } from '../../core/types'
 import { Usuario } from '../../domain/Usuario'
 import { createUser, deleteUser, listUsers, updateUser, type UserInput } from '../../services/usersApi'
 import { FormModal } from '../../shared/crud/FormModal'
+import { useCrudForm } from '../../shared/crud/useCrudForm'
+import { useTenantData } from '../../shared/crud/useTenantData'
 import { RowActions } from '../../shared/crud/RowActions'
 import { Alert, Button, Card, ConfirmDialog, DataTable, FormField, PageHeader, StatusBadge, VariationInfo, type Column } from '../../shared/ui'
 
 export function UsersPage() {
-  const { tenant, dataVersion } = useTenant()
-  const [users, setUsers] = useState<User[]>([])
+  const { tenant } = useTenant()
   const [typeFilter, setTypeFilter] = useState<PersonType | 'todos'>('todos')
-  const [editing, setEditing] = useState<User | null>(null)
-  const [form, setForm] = useState<UserInput>({ name: '', document: '', type: tenant.personTypes[0], role: tenant.allowedRoles[0], active: true })
-  const [formOpen, setFormOpen] = useState(false)
-  const [deleteId, setDeleteId] = useState<string | null>(null)
-  const [message, setMessage] = useState('')
-  const [error, setError] = useState('')
-
-  // READ: carrega as pessoas do tenant ativo (e de novo após "Restaurar dados")
-  useEffect(() => {
-    let current = true
-    listUsers(tenant.id)
-      .then((list) => {
-        if (!current) return
-        setUsers(list)
-        setError('')
-      })
-      .catch((failure: Error) => {
-        if (!current) return
-        setUsers([])
-        setError(`Não foi possível carregar as pessoas: ${failure.message}`)
-      })
-    return () => { current = false }
-  }, [tenant.id, dataVersion])
+  // READ: pessoas do tenant ativo
+  const list = useTenantData(listUsers, [] as User[], 'Não foi possível carregar as pessoas')
+  // CREATE / UPDATE / DELETE: fluxo do formulário
+  const crud = useCrudForm<User, UserInput>({
+    emptyForm: () => ({ name: '', document: '', type: tenant.personTypes[0], role: tenant.allowedRoles[0], active: true }),
+    toForm: (user) => ({ name: user.name, document: user.document, type: user.type, role: user.role, active: user.active }),
+    create: (input) => createUser(tenant.id, input),
+    update: (id, input) => updateUser(tenant.id, id, input),
+    remove: (id) => deleteUser(tenant.id, id),
+    messages: { created: () => 'Pessoa cadastrada com sucesso.', updated: () => 'Pessoa atualizada com sucesso.', deleted: 'Pessoa excluída.' },
+    setItems: list.setData,
+  })
+  const { form, setForm, error } = crud
+  const users = list.data
 
   // Se o filtro escolhido não existir no tenant atual, mostra todos
   const activeFilter = typeFilter !== 'todos' && tenant.personTypes.includes(typeFilter) ? typeFilter : 'todos'
   const visible = users.filter((user) => activeFilter === 'todos' || user.type === activeFilter)
-
-  const openCreate = () => {
-    setEditing(null)
-    setForm({ name: '', document: '', type: tenant.personTypes[0], role: tenant.allowedRoles[0], active: true })
-    setFormOpen(true)
-    setMessage('')
-    setError('')
-  }
-  const openEdit = (user: User) => {
-    setEditing(user)
-    setForm({ name: user.name, document: user.document, type: user.type, role: user.role, active: user.active })
-    setFormOpen(true)
-    setMessage('')
-    setError('')
-  }
-  const close = () => setFormOpen(false)
-
-  // CREATE / UPDATE
-  const submit = async (event: FormEvent) => {
-    event.preventDefault()
-    try {
-      if (editing) {
-        const updated = await updateUser(tenant.id, editing.id, form)
-        setUsers((current) => current.map((user) => user.id === updated.id ? updated : user))
-        setMessage('Pessoa atualizada com sucesso.')
-      } else {
-        const created = await createUser(tenant.id, form)
-        setUsers((current) => [...current, created])
-        setMessage('Pessoa cadastrada com sucesso.')
-      }
-      setFormOpen(false)
-    } catch (failure) {
-      setError((failure as Error).message)
-    }
-  }
-
-  // DELETE
-  const confirmDelete = async (id: string) => {
-    setDeleteId(null)
-    try {
-      await deleteUser(tenant.id, id)
-      setUsers((current) => current.filter((user) => user.id !== id))
-      setMessage('Pessoa excluída.')
-    } catch (failure) {
-      setError((failure as Error).message)
-    }
-  }
 
   // A classe de domínio Usuario decide o destaque do tipo
   const typeTone = (user: User) => {
@@ -104,7 +49,7 @@ export function UsersPage() {
     {
       header: 'Ações',
       render: (row) => (
-        <RowActions label={`${row.name}`} onEdit={() => openEdit(row)} onDelete={() => setDeleteId(row.id)} />
+        <RowActions label={`${row.name}`} onEdit={() => crud.openEdit(row)} onDelete={() => crud.askDelete(row.id)} />
       ),
     },
   ]
@@ -115,14 +60,14 @@ export function UsersPage() {
         eyebrow="Cadastro de pessoas"
         title="Pessoas"
         description={`Pessoas autorizadas a utilizar o estacionamento de ${tenant.name}.`}
-        action={<Button onClick={openCreate}><Plus size={17} /> Nova pessoa</Button>}
+        action={<Button onClick={crud.openCreate}><Plus size={17} /> Nova pessoa</Button>}
       />
       <VariationInfo>
         Os tipos de pessoa vêm de `personTypes` e os perfis de `allowedRoles` do tenant: pacientes e acompanhantes no Hospital,
         moradores e visitantes no Condomínio, funcionários e visitantes na Empresa, motoristas e funcionários no Shopping.
       </VariationInfo>
-      {message && <Alert>{message}</Alert>}
-      {error && !formOpen && <Alert tone="danger">{error}</Alert>}
+      {crud.message && <Alert>{crud.message}</Alert>}
+      {(error || list.error) && !crud.formOpen && <Alert tone="danger">{error || list.error}</Alert>}
 
       <Card>
         <div className="table-toolbar">
@@ -140,8 +85,8 @@ export function UsersPage() {
         <DataTable rows={visible} columns={columns} emptyMessage="Nenhuma pessoa cadastrada." />
       </Card>
 
-      {formOpen && (
-        <FormModal id="user-form" eyebrow="Cadastro de pessoas" title={editing ? 'Editar pessoa' : 'Nova pessoa'} error={error} submitLabel="Salvar pessoa" onSubmit={submit} onClose={close}>
+      {crud.formOpen && (
+        <FormModal id="user-form" eyebrow="Cadastro de pessoas" title={crud.editing ? 'Editar pessoa' : 'Nova pessoa'} error={error} submitLabel="Salvar pessoa" onSubmit={crud.submit} onClose={crud.close}>
           <FormField label="Nome">
             <input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Nome completo" />
           </FormField>
@@ -167,12 +112,12 @@ export function UsersPage() {
         </FormModal>
       )}
 
-      {deleteId && (
+      {crud.deleteId && (
         <ConfirmDialog
           title="Excluir pessoa?"
           description="O cadastro será removido deste cliente."
-          onCancel={() => setDeleteId(null)}
-          onConfirm={() => confirmDelete(deleteId)}
+          onCancel={crud.cancelDelete}
+          onConfirm={() => crud.confirmDelete()}
         />
       )}
     </div>
