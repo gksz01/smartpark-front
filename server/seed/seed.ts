@@ -295,20 +295,32 @@ export function popularPagamentos(db: Banco): void {
   }
 }
 
+/**
+ * Tabelas populadas pelo seed, na ordem de criação:
+ * quem aponta para outra tabela (foreign key) vem depois dela.
+ * popularConvenios preenche convenios e atendimentos.
+ */
+const SEED_POR_TABELA = [
+  { tabela: 'veiculos', popular: popularVeiculos },
+  { tabela: 'usuarios', popular: popularUsuarios },
+  { tabela: 'vagas', popular: popularVagas },
+  { tabela: 'acessos', popular: popularAcessos },
+  { tabela: 'tarifas', popular: popularTarifas },
+  { tabela: 'reservas', popular: popularReservas },
+  { tabela: 'convenios', popular: popularConvenios },
+  { tabela: 'pagamentos', popular: popularPagamentos },
+]
+
+/** Todas as tabelas do banco, na ordem de criação. */
+export const TABELAS = ['veiculos', 'usuarios', 'vagas', 'acessos', 'tarifas', 'reservas', 'convenios', 'atendimentos', 'pagamentos']
+
 export function popularBanco(db: Banco): void {
-  popularVeiculos(db)
-  popularUsuarios(db)
-  popularVagas(db)
-  popularAcessos(db)
-  popularTarifas(db)
-  popularReservas(db)
-  popularConvenios(db)
-  popularPagamentos(db)
+  for (const { popular } of SEED_POR_TABELA) popular(db)
 }
 
-function tabelaVazia(db: Banco, tabela: 'veiculos' | 'usuarios' | 'vagas' | 'acessos' | 'tarifas' | 'reservas' | 'convenios' | 'pagamentos'): boolean {
+export function contarLinhas(db: Banco, tabela: string): number {
   const { total } = db.prepare(`SELECT COUNT(*) AS total FROM ${tabela}`).get() as { total: number }
-  return total === 0
+  return total
 }
 
 /**
@@ -317,30 +329,20 @@ function tabelaVazia(db: Banco, tabela: 'veiculos' | 'usuarios' | 'vagas' | 'ace
  */
 export function popularTabelasVazias(db: Banco): string[] {
   const populadas: string[] = []
-  if (tabelaVazia(db, 'veiculos')) { popularVeiculos(db); populadas.push('veiculos') }
-  if (tabelaVazia(db, 'usuarios')) { popularUsuarios(db); populadas.push('usuarios') }
-  if (tabelaVazia(db, 'vagas')) { popularVagas(db); populadas.push('vagas') }
-  if (tabelaVazia(db, 'acessos')) { popularAcessos(db); populadas.push('acessos') }
-  if (tabelaVazia(db, 'tarifas')) { popularTarifas(db); populadas.push('tarifas') }
-  if (tabelaVazia(db, 'reservas')) { popularReservas(db); populadas.push('reservas') }
-  if (tabelaVazia(db, 'convenios')) { popularConvenios(db); populadas.push('convenios') }
-  if (tabelaVazia(db, 'pagamentos')) { popularPagamentos(db); populadas.push('pagamentos') }
+  for (const { tabela, popular } of SEED_POR_TABELA) {
+    if (contarLinhas(db, tabela) > 0) continue
+    popular(db)
+    populadas.push(tabela)
+  }
   return populadas
 }
 
 /** Apaga todos os dados e insere novamente os registros de demonstração. */
 export function resetarBanco(db: Banco): void {
   const resetar = db.transaction(() => {
-    db.exec('DELETE FROM pagamentos') // primeiro: aponta para veiculos, reservas e atendimentos (foreign keys)
-    db.exec('DELETE FROM reservas') // aponta para veiculos e vagas
-    db.exec('DELETE FROM atendimentos') // aponta para convenios
-    db.exec('DELETE FROM veiculos')
-    db.exec('DELETE FROM usuarios')
-    db.exec('DELETE FROM vagas')
-    db.exec('DELETE FROM acessos')
-    db.exec('DELETE FROM tarifas')
-    db.exec('DELETE FROM convenios')
-    db.exec("DELETE FROM sqlite_sequence WHERE name IN ('veiculos', 'usuarios', 'vagas', 'acessos', 'tarifas', 'reservas', 'convenios', 'atendimentos', 'pagamentos')") // reinicia os ids em 1
+    // Ordem inversa da criação: quem tem foreign key é apagado antes da tabela apontada
+    for (const tabela of [...TABELAS].reverse()) db.exec(`DELETE FROM ${tabela}`)
+    db.prepare(`DELETE FROM sqlite_sequence WHERE name IN (${TABELAS.map(() => '?').join(', ')})`).run(...TABELAS) // reinicia os ids em 1
     popularBanco(db)
   })
   resetar()
