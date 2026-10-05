@@ -1,8 +1,9 @@
-import { Router, type Request, type Response } from 'express'
-import { isTenantId, TENANTS } from '../../src/core/config'
+import { Router } from 'express'
+import { TENANTS } from '../../src/core/config'
 import type { TenantId } from '../../src/core/types'
 import { Veiculo } from '../../src/domain/Veiculo'
 import type { Banco } from '../database/conexao'
+import { enviarErro, erroSqlite, lerTenant, texto } from './comum'
 
 /** Formato de uma linha da tabela veiculos. */
 interface LinhaVeiculo {
@@ -29,19 +30,7 @@ function paraJson(linha: LinhaVeiculo) {
   }
 }
 
-/** Todo pedido precisa informar o cliente: /api/vehicles?tenant=shopping */
-function lerTenant(req: Request, res: Response): TenantId | null {
-  const tenant = req.query.tenant
-  if (typeof tenant !== 'string' || !isTenantId(tenant)) {
-    res.status(400).json({ erro: 'Informe um tenant válido em ?tenant=' })
-    return null
-  }
-  return tenant
-}
 
-function texto(valor: unknown): string {
-  return typeof valor === 'string' ? valor.trim() : ''
-}
 
 /**
  * Valida o corpo do pedido e devolve um objeto Veiculo do domínio.
@@ -61,9 +50,6 @@ function validar(corpo: Record<string, unknown>, tenant: TenantId): { veiculo?: 
   return { veiculo }
 }
 
-function placaRepetida(erro: unknown): boolean {
-  return erro instanceof Error && 'code' in erro && erro.code === 'SQLITE_CONSTRAINT_UNIQUE'
-}
 
 export function criarRotasVeiculos(db: Banco): Router {
   const rotas = Router()
@@ -81,10 +67,7 @@ export function criarRotasVeiculos(db: Banco): Router {
     const tenant = lerTenant(req, res)
     if (!tenant) return
     const { veiculo, erro } = validar(req.body ?? {}, tenant)
-    if (!veiculo) {
-      res.status(400).json({ erro })
-      return
-    }
+    if (!veiculo) return enviarErro(res, 400, erro)
 
     try {
       const resultado = db.prepare(`
@@ -94,7 +77,7 @@ export function criarRotasVeiculos(db: Banco): Router {
       const criado = db.prepare('SELECT * FROM veiculos WHERE id = ?').get(resultado.lastInsertRowid) as LinhaVeiculo
       res.status(201).json(paraJson(criado))
     } catch (falha) {
-      if (!placaRepetida(falha)) throw falha
+      if (!erroSqlite(falha, 'UNIQUE')) throw falha
       res.status(409).json({ erro: `Já existe um veículo com a placa ${veiculo.placaNormalizada()} neste cliente.` })
     }
   })
@@ -104,24 +87,18 @@ export function criarRotasVeiculos(db: Banco): Router {
     const tenant = lerTenant(req, res)
     if (!tenant) return
     const { veiculo, erro } = validar(req.body ?? {}, tenant)
-    if (!veiculo) {
-      res.status(400).json({ erro })
-      return
-    }
+    if (!veiculo) return enviarErro(res, 400, erro)
 
     try {
       const resultado = db.prepare(`
         UPDATE veiculos SET apelido = ?, placa = ?, modelo = ?, cor = ?, unidade = ?, tag_rfid = ?
         WHERE id = ? AND tenant_id = ?
       `).run(veiculo.apelido, veiculo.placaNormalizada(), veiculo.modelo, veiculo.cor, veiculo.unidade || null, veiculo.tagRfid || null, req.params.id, tenant)
-      if (resultado.changes === 0) {
-        res.status(404).json({ erro: 'Veículo não encontrado.' })
-        return
-      }
+      if (resultado.changes === 0) return enviarErro(res, 404, 'Veículo não encontrado.')
       const atualizado = db.prepare('SELECT * FROM veiculos WHERE id = ?').get(req.params.id) as LinhaVeiculo
       res.json(paraJson(atualizado))
     } catch (falha) {
-      if (!placaRepetida(falha)) throw falha
+      if (!erroSqlite(falha, 'UNIQUE')) throw falha
       res.status(409).json({ erro: `Já existe um veículo com a placa ${veiculo.placaNormalizada()} neste cliente.` })
     }
   })
@@ -135,17 +112,14 @@ export function criarRotasVeiculos(db: Banco): Router {
       resultado = db.prepare('DELETE FROM veiculos WHERE id = ? AND tenant_id = ?').run(req.params.id, tenant)
     } catch (falha) {
       // Foreign key: o veículo ainda é usado por reservas ou pagamentos
-      if (!(falha instanceof Error && 'code' in falha && falha.code === 'SQLITE_CONSTRAINT_FOREIGNKEY')) throw falha
+      if (!erroSqlite(falha, 'FOREIGNKEY')) throw falha
       const { reservas } = db.prepare('SELECT COUNT(*) AS reservas FROM reservas WHERE veiculo_id = ?').get(req.params.id) as { reservas: number }
       res.status(409).json({
         erro: reservas > 0 ? 'Este veículo possui reservas. Exclua as reservas dele antes.' : 'Este veículo possui pagamentos registrados. Exclua os pagamentos dele antes.',
       })
       return
     }
-    if (resultado.changes === 0) {
-      res.status(404).json({ erro: 'Veículo não encontrado.' })
-      return
-    }
+    if (resultado.changes === 0) return enviarErro(res, 404, 'Veículo não encontrado.')
     res.status(204).end()
   })
 

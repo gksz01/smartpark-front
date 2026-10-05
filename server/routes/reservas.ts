@@ -1,5 +1,5 @@
-import { Router, type Request, type Response } from 'express'
-import { FEATURE_LABELS, isTenantId, TENANTS } from '../../src/core/config'
+import { Router, type Response } from 'express'
+import { TENANTS } from '../../src/core/config'
 import type { ReservationStatus, TenantId } from '../../src/core/types'
 import { Estacionamento } from '../../src/domain/Estacionamento'
 import { CRIADOR_POR_TIPO } from '../../src/domain/factories/vaga/criadorPorTipo'
@@ -13,6 +13,7 @@ import type { Vaga } from '../../src/domain/Vaga'
 import type { Banco } from '../database/conexao'
 import { paraTarifa, type LinhaTarifa } from './tarifas'
 import type { LinhaVaga } from './vagas'
+import { enviarErro, erroSqlite, lerTenant } from './comum'
 
 /** Linha da tabela reservas já com dados do veículo e da vaga (JOIN). */
 interface LinhaReserva {
@@ -102,26 +103,13 @@ function persistirVaga(db: Banco, linha: LinhaVaga, vaga: Vaga): void {
 /** Regras do domínio (Reserva, Vaga) viram 409; o índice único do banco também. */
 function responderConflito(res: Response, falha: unknown): void {
   if (falha instanceof Error && 'code' in falha) {
-    if (falha.code !== 'SQLITE_CONSTRAINT_UNIQUE') throw falha
+    if (!erroSqlite(falha, 'UNIQUE')) throw falha
     res.status(409).json({ erro: 'Esta vaga já possui uma reserva confirmada.' })
     return
   }
   res.status(409).json({ erro: (falha as Error).message })
 }
 
-/** Todo pedido precisa de um tenant válido E com a feature reservation ligada. */
-function lerTenantComReserva(req: Request, res: Response): TenantId | null {
-  const tenant = req.query.tenant
-  if (typeof tenant !== 'string' || !isTenantId(tenant)) {
-    res.status(400).json({ erro: 'Informe um tenant válido em ?tenant=' })
-    return null
-  }
-  if (!TENANTS[tenant].features.reservation) {
-    res.status(403).json({ erro: `O módulo ${FEATURE_LABELS.reservation} não está disponível para ${TENANTS[tenant].name}.` })
-    return null
-  }
-  return tenant
-}
 
 /** Valida data, horário e duração (usados na criação e na alteração). */
 function validarPeriodo(corpo: Record<string, unknown>): { data?: string; hora?: string; duracao?: number; erro?: string } {
@@ -141,7 +129,7 @@ export function criarRotasReservas(db: Banco): Router {
 
   // READ — reservas do tenant, com veículo e vaga
   rotas.get('/', (req, res) => {
-    const tenant = lerTenantComReserva(req, res)
+    const tenant = lerTenant(req, res, 'reservation')
     if (!tenant) return
     const linhas = db.prepare(`${SELECT_RESERVA} WHERE r.tenant_id = ? ORDER BY r.data DESC, r.hora DESC`).all(tenant) as LinhaReserva[]
     res.json(linhas.map((linha) => paraJson(paraReserva(linha), linha)))
@@ -149,31 +137,19 @@ export function criarRotasReservas(db: Banco): Router {
 
   // CREATE — cria, calcula com a Strategy, confirma pelo Observer e grava tudo numa transação
   rotas.post('/', (req, res) => {
-    const tenant = lerTenantComReserva(req, res)
+    const tenant = lerTenant(req, res, 'reservation')
     if (!tenant) return
     const corpo = req.body ?? {}
     const { data, hora, duracao, erro } = validarPeriodo(corpo)
-    if (erro) {
-      res.status(400).json({ erro })
-      return
-    }
+    if (erro) return enviarErro(res, 400, erro)
 
     // Veículo e vaga precisam ser DESTE tenant (não confiamos só no id enviado)
     const veiculo = db.prepare('SELECT id FROM veiculos WHERE id = ? AND tenant_id = ?').get(corpo.vehicleId, tenant) as { id: number } | undefined
-    if (!veiculo) {
-      res.status(400).json({ erro: 'Veículo não encontrado neste cliente.' })
-      return
-    }
+    if (!veiculo) return enviarErro(res, 400, 'Veículo não encontrado neste cliente.')
     const linhaVaga = db.prepare('SELECT * FROM vagas WHERE id = ? AND tenant_id = ?').get(corpo.spaceId, tenant) as LinhaVaga | undefined
-    if (!linhaVaga) {
-      res.status(400).json({ erro: 'Vaga não encontrada neste cliente.' })
-      return
-    }
+    if (!linhaVaga) return enviarErro(res, 400, 'Vaga não encontrada neste cliente.')
     const tarifa = carregarTarifaAtiva(db, tenant)
-    if (!tarifa) {
-      res.status(409).json({ erro: 'Não há tarifa ativa neste cliente. Ative uma tarifa antes de reservar.' })
-      return
-    }
+    if (!tarifa) return enviarErro(res, 409, 'Não há tarifa ativa neste cliente. Ative uma tarifa antes de reservar.')
 
     const notificacoes: Notificacao[] = []
     const criar = db.transaction(() => {
@@ -205,23 +181,14 @@ export function criarRotasReservas(db: Banco): Router {
 
   // UPDATE — altera data, horário e duração e recalcula a estimativa com a Strategy
   rotas.put('/:id', (req, res) => {
-    const tenant = lerTenantComReserva(req, res)
+    const tenant = lerTenant(req, res, 'reservation')
     if (!tenant) return
     const { data, hora, duracao, erro } = validarPeriodo(req.body ?? {})
-    if (erro) {
-      res.status(400).json({ erro })
-      return
-    }
+    if (erro) return enviarErro(res, 400, erro)
     const linha = buscarReserva(db, req.params.id, tenant)
-    if (!linha) {
-      res.status(404).json({ erro: 'Reserva não encontrada.' })
-      return
-    }
+    if (!linha) return enviarErro(res, 404, 'Reserva não encontrada.')
     const tarifa = carregarTarifaAtiva(db, tenant)
-    if (!tarifa) {
-      res.status(409).json({ erro: 'Não há tarifa ativa neste cliente. Ative uma tarifa antes de alterar a reserva.' })
-      return
-    }
+    if (!tarifa) return enviarErro(res, 409, 'Não há tarifa ativa neste cliente. Ative uma tarifa antes de alterar a reserva.')
 
     const notificacoes: Notificacao[] = []
     const alterar = db.transaction(() => {
@@ -245,13 +212,10 @@ export function criarRotasReservas(db: Banco): Router {
 
   // UPDATE (status) — cancelar: o Observer libera a vaga e a API grava os dois registros
   rotas.put('/:id/cancel', (req, res) => {
-    const tenant = lerTenantComReserva(req, res)
+    const tenant = lerTenant(req, res, 'reservation')
     if (!tenant) return
     const linha = buscarReserva(db, req.params.id, tenant)
-    if (!linha) {
-      res.status(404).json({ erro: 'Reserva não encontrada.' })
-      return
-    }
+    if (!linha) return enviarErro(res, 404, 'Reserva não encontrada.')
 
     const notificacoes: Notificacao[] = []
     const cancelar = db.transaction(() => {
@@ -275,22 +239,16 @@ export function criarRotasReservas(db: Banco): Router {
 
   // DELETE — só reservas canceladas ou concluídas
   rotas.delete('/:id', (req, res) => {
-    const tenant = lerTenantComReserva(req, res)
+    const tenant = lerTenant(req, res, 'reservation')
     if (!tenant) return
     const linha = buscarReserva(db, req.params.id, tenant)
-    if (!linha) {
-      res.status(404).json({ erro: 'Reserva não encontrada.' })
-      return
-    }
-    if (paraReserva(linha).estaAtiva()) {
-      res.status(409).json({ erro: 'Cancele a reserva antes de excluir.' })
-      return
-    }
+    if (!linha) return enviarErro(res, 404, 'Reserva não encontrada.')
+    if (paraReserva(linha).estaAtiva()) return enviarErro(res, 409, 'Cancele a reserva antes de excluir.')
     try {
       db.prepare('DELETE FROM reservas WHERE id = ? AND tenant_id = ?').run(linha.id, tenant)
     } catch (falha) {
       // Foreign key: a reserva aparece em um pagamento
-      if (!(falha instanceof Error && 'code' in falha && falha.code === 'SQLITE_CONSTRAINT_FOREIGNKEY')) throw falha
+      if (!erroSqlite(falha, 'FOREIGNKEY')) throw falha
       res.status(409).json({ erro: 'Esta reserva possui pagamento registrado. Exclua o pagamento antes.' })
       return
     }

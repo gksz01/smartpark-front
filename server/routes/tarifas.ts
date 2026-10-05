@@ -1,9 +1,10 @@
-import { Router, type Request, type Response } from 'express'
-import { FEATURE_LABELS, isTenantId, TARIFF_STRATEGIES, TARIFF_STRATEGY_LABELS, TENANTS } from '../../src/core/config'
-import type { TariffStrategyType, TenantId } from '../../src/core/types'
+import { Router } from 'express'
+import { TARIFF_STRATEGIES, TARIFF_STRATEGY_LABELS } from '../../src/core/config'
+import type { TariffStrategyType } from '../../src/core/types'
 import { configuracaoDaEstrategia, CRIAR_ESTRATEGIA } from '../../src/domain/strategies/tarifa/estrategiaPorTipo'
 import { Tarifa } from '../../src/domain/Tarifa'
 import type { Banco } from '../database/conexao'
+import { enviarErro, lerTenant, texto } from './comum'
 
 /** Formato de uma linha da tabela tarifas. */
 export interface LinhaTarifa {
@@ -35,26 +36,7 @@ function paraJson(tarifa: Tarifa, ativa: boolean) {
   }
 }
 
-/**
- * Todo pedido precisa informar um tenant válido E com a feature billing ligada.
- * A mesma flag de config.ts que esconde o menu bloqueia a API.
- */
-function lerTenantComCobranca(req: Request, res: Response): TenantId | null {
-  const tenant = req.query.tenant
-  if (typeof tenant !== 'string' || !isTenantId(tenant)) {
-    res.status(400).json({ erro: 'Informe um tenant válido em ?tenant=' })
-    return null
-  }
-  if (!TENANTS[tenant].features.billing) {
-    res.status(403).json({ erro: `O módulo ${FEATURE_LABELS.billing} não está disponível para ${TENANTS[tenant].name}.` })
-    return null
-  }
-  return tenant
-}
 
-function texto(valor: unknown): string {
-  return typeof valor === 'string' ? valor.trim() : ''
-}
 
 /** Valida o corpo do pedido e devolve a Tarifa já montada com a Strategy escolhida. */
 function validar(corpo: Record<string, unknown>): { tarifa?: Tarifa; ativa?: boolean; erro?: string } {
@@ -83,7 +65,7 @@ export function criarRotasTarifas(db: Banco): Router {
 
   // READ — tarifas do tenant (a ativa primeiro)
   rotas.get('/', (req, res) => {
-    const tenant = lerTenantComCobranca(req, res)
+    const tenant = lerTenant(req, res, 'billing')
     if (!tenant) return
     const linhas = db.prepare('SELECT * FROM tarifas WHERE tenant_id = ? ORDER BY ativa DESC, id').all(tenant) as LinhaTarifa[]
     res.json(linhas.map((linha) => paraJson(paraTarifa(linha), linha.ativa === 1)))
@@ -91,13 +73,10 @@ export function criarRotasTarifas(db: Banco): Router {
 
   // CREATE — se nascer ativa, desativa a anterior na mesma transação
   rotas.post('/', (req, res) => {
-    const tenant = lerTenantComCobranca(req, res)
+    const tenant = lerTenant(req, res, 'billing')
     if (!tenant) return
     const { tarifa, ativa, erro } = validar(req.body ?? {})
-    if (!tarifa) {
-      res.status(400).json({ erro })
-      return
-    }
+    if (!tarifa) return enviarErro(res, 400, erro)
 
     const configuracao = configuracaoDaEstrategia(tarifa.estrategia)
     const salvar = db.transaction(() => {
@@ -114,18 +93,12 @@ export function criarRotasTarifas(db: Banco): Router {
 
   // UPDATE — editar ou ativar; ativar desativa a anterior na mesma transação
   rotas.put('/:id', (req, res) => {
-    const tenant = lerTenantComCobranca(req, res)
+    const tenant = lerTenant(req, res, 'billing')
     if (!tenant) return
     const { tarifa, ativa, erro } = validar(req.body ?? {})
-    if (!tarifa) {
-      res.status(400).json({ erro })
-      return
-    }
+    if (!tarifa) return enviarErro(res, 400, erro)
     const existe = db.prepare('SELECT id FROM tarifas WHERE id = ? AND tenant_id = ?').get(req.params.id, tenant)
-    if (!existe) {
-      res.status(404).json({ erro: 'Tarifa não encontrada.' })
-      return
-    }
+    if (!existe) return enviarErro(res, 404, 'Tarifa não encontrada.')
 
     const configuracao = configuracaoDaEstrategia(tarifa.estrategia)
     const salvar = db.transaction(() => {
@@ -142,17 +115,11 @@ export function criarRotasTarifas(db: Banco): Router {
 
   // DELETE — a tarifa ativa não pode ser excluída
   rotas.delete('/:id', (req, res) => {
-    const tenant = lerTenantComCobranca(req, res)
+    const tenant = lerTenant(req, res, 'billing')
     if (!tenant) return
     const linha = db.prepare('SELECT * FROM tarifas WHERE id = ? AND tenant_id = ?').get(req.params.id, tenant) as LinhaTarifa | undefined
-    if (!linha) {
-      res.status(404).json({ erro: 'Tarifa não encontrada.' })
-      return
-    }
-    if (linha.ativa === 1) {
-      res.status(409).json({ erro: `A tarifa ${linha.nome} está ativa. Ative outra tarifa ou desative esta antes de excluir.` })
-      return
-    }
+    if (!linha) return enviarErro(res, 404, 'Tarifa não encontrada.')
+    if (linha.ativa === 1) return enviarErro(res, 409, `A tarifa ${linha.nome} está ativa. Ative outra tarifa ou desative esta antes de excluir.`)
     db.prepare('DELETE FROM tarifas WHERE id = ? AND tenant_id = ?').run(req.params.id, tenant)
     res.status(204).end()
   })

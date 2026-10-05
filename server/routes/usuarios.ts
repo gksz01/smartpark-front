@@ -1,8 +1,9 @@
-import { Router, type Request, type Response } from 'express'
-import { isTenantId, PERSON_TYPE_LABELS, ROLE_LABELS, TENANTS } from '../../src/core/config'
+import { Router } from 'express'
+import { PERSON_TYPE_LABELS, ROLE_LABELS, TENANTS } from '../../src/core/config'
 import type { PersonType, Role, TenantId } from '../../src/core/types'
 import { Usuario } from '../../src/domain/Usuario'
 import type { Banco } from '../database/conexao'
+import { enviarErro, erroSqlite, lerTenant, texto } from './comum'
 
 /** Formato de uma linha da tabela usuarios. */
 interface LinhaUsuario {
@@ -27,19 +28,7 @@ function paraJson(linha: LinhaUsuario) {
   }
 }
 
-/** Todo pedido precisa informar o cliente: /api/users?tenant=hospital */
-function lerTenant(req: Request, res: Response): TenantId | null {
-  const tenant = req.query.tenant
-  if (typeof tenant !== 'string' || !isTenantId(tenant)) {
-    res.status(400).json({ erro: 'Informe um tenant válido em ?tenant=' })
-    return null
-  }
-  return tenant
-}
 
-function texto(valor: unknown): string {
-  return typeof valor === 'string' ? valor.trim() : ''
-}
 
 /**
  * Valida o corpo do pedido e devolve um objeto Usuario do domínio.
@@ -68,9 +57,6 @@ function validar(corpo: Record<string, unknown>, tenant: TenantId): { usuario?: 
   return { usuario: new Usuario('', nome, documento, perfil, tipo, tenant, corpo.active) }
 }
 
-function documentoRepetido(erro: unknown): boolean {
-  return erro instanceof Error && 'code' in erro && erro.code === 'SQLITE_CONSTRAINT_UNIQUE'
-}
 
 export function criarRotasUsuarios(db: Banco): Router {
   const rotas = Router()
@@ -88,10 +74,7 @@ export function criarRotasUsuarios(db: Banco): Router {
     const tenant = lerTenant(req, res)
     if (!tenant) return
     const { usuario, erro } = validar(req.body ?? {}, tenant)
-    if (!usuario) {
-      res.status(400).json({ erro })
-      return
-    }
+    if (!usuario) return enviarErro(res, 400, erro)
 
     try {
       const resultado = db.prepare(`
@@ -101,7 +84,7 @@ export function criarRotasUsuarios(db: Banco): Router {
       const criado = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(resultado.lastInsertRowid) as LinhaUsuario
       res.status(201).json(paraJson(criado))
     } catch (falha) {
-      if (!documentoRepetido(falha)) throw falha
+      if (!erroSqlite(falha, 'UNIQUE')) throw falha
       res.status(409).json({ erro: `Já existe uma pessoa com o documento ${usuario.documento} neste cliente.` })
     }
   })
@@ -111,24 +94,18 @@ export function criarRotasUsuarios(db: Banco): Router {
     const tenant = lerTenant(req, res)
     if (!tenant) return
     const { usuario, erro } = validar(req.body ?? {}, tenant)
-    if (!usuario) {
-      res.status(400).json({ erro })
-      return
-    }
+    if (!usuario) return enviarErro(res, 400, erro)
 
     try {
       const resultado = db.prepare(`
         UPDATE usuarios SET nome = ?, documento = ?, tipo = ?, perfil = ?, ativo = ?
         WHERE id = ? AND tenant_id = ?
       `).run(usuario.nome, usuario.documento, usuario.tipo, usuario.perfil, usuario.ativo ? 1 : 0, req.params.id, tenant)
-      if (resultado.changes === 0) {
-        res.status(404).json({ erro: 'Pessoa não encontrada.' })
-        return
-      }
+      if (resultado.changes === 0) return enviarErro(res, 404, 'Pessoa não encontrada.')
       const atualizado = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(req.params.id) as LinhaUsuario
       res.json(paraJson(atualizado))
     } catch (falha) {
-      if (!documentoRepetido(falha)) throw falha
+      if (!erroSqlite(falha, 'UNIQUE')) throw falha
       res.status(409).json({ erro: `Já existe uma pessoa com o documento ${usuario.documento} neste cliente.` })
     }
   })
@@ -138,10 +115,7 @@ export function criarRotasUsuarios(db: Banco): Router {
     const tenant = lerTenant(req, res)
     if (!tenant) return
     const resultado = db.prepare('DELETE FROM usuarios WHERE id = ? AND tenant_id = ?').run(req.params.id, tenant)
-    if (resultado.changes === 0) {
-      res.status(404).json({ erro: 'Pessoa não encontrada.' })
-      return
-    }
+    if (resultado.changes === 0) return enviarErro(res, 404, 'Pessoa não encontrada.')
     res.status(204).end()
   })
 

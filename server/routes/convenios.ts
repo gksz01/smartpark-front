@@ -1,9 +1,10 @@
-import { Router, type Request, type Response } from 'express'
-import { BENEFIT_TYPE_LABELS, BENEFIT_TYPES, FEATURE_LABELS, isTenantId, TENANTS } from '../../src/core/config'
+import { Router } from 'express'
+import { BENEFIT_TYPE_LABELS, BENEFIT_TYPES } from '../../src/core/config'
 import type { BenefitType, TenantId } from '../../src/core/types'
 import { Atendimento } from '../../src/domain/Atendimento'
 import { Convenio } from '../../src/domain/Convenio'
 import type { Banco } from '../database/conexao'
+import { enviarErro, erroSqlite, lerTenant, texto } from './comum'
 
 /** Linha da tabela convenios (com a contagem de atendimentos vinculados). */
 export interface LinhaConvenio {
@@ -60,23 +61,7 @@ function buscarConvenio(db: Banco, id: string | number, tenant: TenantId): Linha
   return db.prepare(`${SELECT_CONVENIO} WHERE c.id = ? AND c.tenant_id = ?`).get(id, tenant) as LinhaConvenio | undefined
 }
 
-/** Todo pedido precisa de um tenant válido E com a feature medicalAgreement ligada. */
-function lerTenantComConvenio(req: Request, res: Response): TenantId | null {
-  const tenant = req.query.tenant
-  if (typeof tenant !== 'string' || !isTenantId(tenant)) {
-    res.status(400).json({ erro: 'Informe um tenant válido em ?tenant=' })
-    return null
-  }
-  if (!TENANTS[tenant].features.medicalAgreement) {
-    res.status(403).json({ erro: `O módulo ${FEATURE_LABELS.medicalAgreement} não está disponível para ${TENANTS[tenant].name}.` })
-    return null
-  }
-  return tenant
-}
 
-function texto(valor: unknown): string {
-  return typeof valor === 'string' ? valor.trim() : ''
-}
 
 /** Valida o corpo do pedido e devolve um Convenio do domínio. */
 function validar(corpo: Record<string, unknown>): { convenio?: Convenio; erro?: string } {
@@ -96,16 +81,13 @@ function validar(corpo: Record<string, unknown>): { convenio?: Convenio; erro?: 
   return { convenio: new Convenio('', nome, tipo, tipo === 'isencao' ? 0 : valor, corpo.active) }
 }
 
-function nomeRepetido(erro: unknown): boolean {
-  return erro instanceof Error && 'code' in erro && erro.code === 'SQLITE_CONSTRAINT_UNIQUE'
-}
 
 export function criarRotasConvenios(db: Banco): Router {
   const rotas = Router()
 
   // READ — convênios do tenant, com a quantidade de atendimentos vinculados
   rotas.get('/', (req, res) => {
-    const tenant = lerTenantComConvenio(req, res)
+    const tenant = lerTenant(req, res, 'medicalAgreement')
     if (!tenant) return
     const linhas = db.prepare(`${SELECT_CONVENIO} WHERE c.tenant_id = ? ORDER BY c.nome`).all(tenant) as LinhaConvenio[]
     res.json(linhas.map((linha) => paraJson(paraConvenio(linha), linha.total_atendimentos ?? 0)))
@@ -113,13 +95,10 @@ export function criarRotasConvenios(db: Banco): Router {
 
   // CREATE
   rotas.post('/', (req, res) => {
-    const tenant = lerTenantComConvenio(req, res)
+    const tenant = lerTenant(req, res, 'medicalAgreement')
     if (!tenant) return
     const { convenio, erro } = validar(req.body ?? {})
-    if (!convenio) {
-      res.status(400).json({ erro })
-      return
-    }
+    if (!convenio) return enviarErro(res, 400, erro)
 
     try {
       const resultado = db.prepare(`
@@ -129,70 +108,52 @@ export function criarRotasConvenios(db: Banco): Router {
       const criado = buscarConvenio(db, Number(resultado.lastInsertRowid), tenant)!
       res.status(201).json(paraJson(paraConvenio(criado), 0))
     } catch (falha) {
-      if (!nomeRepetido(falha)) throw falha
+      if (!erroSqlite(falha, 'UNIQUE')) throw falha
       res.status(409).json({ erro: `Já existe um convênio chamado ${convenio.nome} neste cliente.` })
     }
   })
 
   // UPDATE — inclusive desativar (convênio inativo deixa de tornar atendimentos elegíveis)
   rotas.put('/:id', (req, res) => {
-    const tenant = lerTenantComConvenio(req, res)
+    const tenant = lerTenant(req, res, 'medicalAgreement')
     if (!tenant) return
     const { convenio, erro } = validar(req.body ?? {})
-    if (!convenio) {
-      res.status(400).json({ erro })
-      return
-    }
+    if (!convenio) return enviarErro(res, 400, erro)
 
     try {
       const resultado = db.prepare(`
         UPDATE convenios SET nome = ?, tipo_beneficio = ?, valor_beneficio = ?, ativo = ?
         WHERE id = ? AND tenant_id = ?
       `).run(convenio.nome, convenio.tipoBeneficio, convenio.valorBeneficio, convenio.ativo ? 1 : 0, req.params.id, tenant)
-      if (resultado.changes === 0) {
-        res.status(404).json({ erro: 'Convênio não encontrado.' })
-        return
-      }
+      if (resultado.changes === 0) return enviarErro(res, 404, 'Convênio não encontrado.')
       const atualizado = buscarConvenio(db, req.params.id, tenant)!
       res.json(paraJson(paraConvenio(atualizado), atualizado.total_atendimentos ?? 0))
     } catch (falha) {
-      if (!nomeRepetido(falha)) throw falha
+      if (!erroSqlite(falha, 'UNIQUE')) throw falha
       res.status(409).json({ erro: `Já existe um convênio chamado ${convenio.nome} neste cliente.` })
     }
   })
 
   // DELETE — só convênios sem atendimentos vinculados
   rotas.delete('/:id', (req, res) => {
-    const tenant = lerTenantComConvenio(req, res)
+    const tenant = lerTenant(req, res, 'medicalAgreement')
     if (!tenant) return
     const linha = buscarConvenio(db, req.params.id, tenant)
-    if (!linha) {
-      res.status(404).json({ erro: 'Convênio não encontrado.' })
-      return
-    }
-    if ((linha.total_atendimentos ?? 0) > 0) {
-      res.status(409).json({ erro: `O convênio ${linha.nome} possui ${linha.total_atendimentos} atendimento(s) vinculado(s) e não pode ser excluído. Desative-o em vez de excluir.` })
-      return
-    }
+    if (!linha) return enviarErro(res, 404, 'Convênio não encontrado.')
+    if ((linha.total_atendimentos ?? 0) > 0) return enviarErro(res, 409, `O convênio ${linha.nome} possui ${linha.total_atendimentos} atendimento(s) vinculado(s) e não pode ser excluído. Desative-o em vez de excluir.`)
     db.prepare('DELETE FROM convenios WHERE id = ? AND tenant_id = ?').run(linha.id, tenant)
     res.status(204).end()
   })
 
   // VALIDAÇÃO DE ATENDIMENTO — só verifica a elegibilidade; o benefício é consumido no pagamento
   rotas.post('/validate', (req, res) => {
-    const tenant = lerTenantComConvenio(req, res)
+    const tenant = lerTenant(req, res, 'medicalAgreement')
     if (!tenant) return
     const numero = texto(req.body?.number).toUpperCase()
-    if (!numero) {
-      res.status(400).json({ erro: 'Informe o número do atendimento.' })
-      return
-    }
+    if (!numero) return enviarErro(res, 400, 'Informe o número do atendimento.')
 
     const linhaAtendimento = db.prepare('SELECT * FROM atendimentos WHERE tenant_id = ? AND numero = ?').get(tenant, numero) as LinhaAtendimento | undefined
-    if (!linhaAtendimento) {
-      res.status(404).json({ erro: 'Atendimento não localizado.' })
-      return
-    }
+    if (!linhaAtendimento) return enviarErro(res, 404, 'Atendimento não localizado.')
     const linhaConvenio = buscarConvenio(db, linhaAtendimento.convenio_id, tenant)!
 
     // As regras (formato, convênio ativo, 24h, benefício já usado) estão na classe Atendimento

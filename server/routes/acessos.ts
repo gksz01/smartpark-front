@@ -1,8 +1,9 @@
-import { Router, type Request, type Response } from 'express'
-import { ACCESS_DIRECTIONS, ACCESS_LABELS, ACCESS_STATUSES, isTenantId, TENANTS } from '../../src/core/config'
+import { Router } from 'express'
+import { ACCESS_DIRECTIONS, ACCESS_LABELS, ACCESS_STATUSES, TENANTS } from '../../src/core/config'
 import type { AccessDirection, AccessMethod, AccessStatus, TenantId } from '../../src/core/types'
 import { Acesso } from '../../src/domain/Acesso'
 import type { Banco } from '../database/conexao'
+import { enviarErro, lerTenant, texto } from './comum'
 
 /** Formato de uma linha da tabela acessos. */
 interface LinhaAcesso {
@@ -41,19 +42,7 @@ function paraJson(acesso: Acesso) {
   }
 }
 
-/** Todo pedido precisa informar o cliente: /api/access?tenant=company */
-function lerTenant(req: Request, res: Response): TenantId | null {
-  const tenant = req.query.tenant
-  if (typeof tenant !== 'string' || !isTenantId(tenant)) {
-    res.status(400).json({ erro: 'Informe um tenant válido em ?tenant=' })
-    return null
-  }
-  return tenant
-}
 
-function texto(valor: unknown): string {
-  return typeof valor === 'string' ? valor.trim() : ''
-}
 
 interface DadosAcesso {
   pessoa: string
@@ -122,17 +111,11 @@ export function criarRotasAcessos(db: Banco): Router {
     const tenant = lerTenant(req, res)
     if (!tenant) return
     const { dados, erro } = validar(req.body ?? {}, tenant)
-    if (!dados) {
-      res.status(400).json({ erro })
-      return
-    }
+    if (!dados) return enviarErro(res, 400, erro)
 
     const acesso = new Acesso('', dados.pessoa, dados.identificador, TENANTS[tenant].accessMethod, dados.direcao, true, new Date())
     const erroStatus = decidirStatus(acesso, dados.status, dados.motivo)
-    if (erroStatus) {
-      res.status(400).json({ erro: erroStatus })
-      return
-    }
+    if (erroStatus) return enviarErro(res, 400, erroStatus)
 
     const resultado = db.prepare(`
       INSERT INTO acessos (tenant_id, pessoa, identificador, metodo, direcao, status, manual, motivo_negacao, horario)
@@ -147,26 +130,17 @@ export function criarRotasAcessos(db: Banco): Router {
     const tenant = lerTenant(req, res)
     if (!tenant) return
     const { dados, erro } = validar(req.body ?? {}, tenant)
-    if (!dados) {
-      res.status(400).json({ erro })
-      return
-    }
+    if (!dados) return enviarErro(res, 400, erro)
 
     const linha = db.prepare('SELECT * FROM acessos WHERE id = ? AND tenant_id = ?').get(req.params.id, tenant) as LinhaAcesso | undefined
-    if (!linha) {
-      res.status(404).json({ erro: 'Acesso não encontrado.' })
-      return
-    }
+    if (!linha) return enviarErro(res, 404, 'Acesso não encontrado.')
 
     const acesso = paraAcesso(linha)
     acesso.pessoa = dados.pessoa
     acesso.identificador = dados.identificador
     acesso.direcao = dados.direcao
     const erroStatus = decidirStatus(acesso, dados.status, dados.motivo)
-    if (erroStatus) {
-      res.status(400).json({ erro: erroStatus })
-      return
-    }
+    if (erroStatus) return enviarErro(res, 400, erroStatus)
 
     db.prepare(`
       UPDATE acessos SET pessoa = ?, identificador = ?, direcao = ?, status = ?, motivo_negacao = ?
@@ -181,10 +155,7 @@ export function criarRotasAcessos(db: Banco): Router {
     const tenant = lerTenant(req, res)
     if (!tenant) return
     const resultado = db.prepare('DELETE FROM acessos WHERE id = ? AND tenant_id = ?').run(req.params.id, tenant)
-    if (resultado.changes === 0) {
-      res.status(404).json({ erro: 'Acesso não encontrado.' })
-      return
-    }
+    if (resultado.changes === 0) return enviarErro(res, 404, 'Acesso não encontrado.')
     res.status(204).end()
   })
 

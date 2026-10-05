@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { Router, type Request, type Response } from 'express'
-import { FEATURE_LABELS, isTenantId, PAYMENT_METHODS, TENANTS } from '../../src/core/config'
+import { Router, type Response } from 'express'
+import { FEATURE_LABELS, PAYMENT_METHODS, TENANTS } from '../../src/core/config'
 import type { PaymentMethod, PaymentStatus, TenantId } from '../../src/core/types'
 import type { Atendimento } from '../../src/domain/Atendimento'
 import { Pagamento } from '../../src/domain/Pagamento'
@@ -11,6 +11,7 @@ import { Tarifa } from '../../src/domain/Tarifa'
 import type { Banco } from '../database/conexao'
 import { paraAtendimento, paraConvenio, type LinhaAtendimento, type LinhaConvenio } from './convenios'
 import { paraTarifa, type LinhaTarifa } from './tarifas'
+import { enviarErro, erroSqlite, lerTenant, texto } from './comum'
 
 /** Linha da tabela pagamentos já com veículo, atendimento e convênio (JOIN). */
 interface LinhaPagamento {
@@ -80,28 +81,12 @@ function buscarPagamento(db: Banco, id: string | number, tenant: TenantId): Linh
   return db.prepare(`${SELECT_PAGAMENTO} WHERE p.id = ? AND p.tenant_id = ?`).get(id, tenant) as LinhaPagamento | undefined
 }
 
-/** Todo pedido precisa de um tenant válido E com a feature billing ligada. */
-function lerTenantComCobranca(req: Request, res: Response): TenantId | null {
-  const tenant = req.query.tenant
-  if (typeof tenant !== 'string' || !isTenantId(tenant)) {
-    res.status(400).json({ erro: 'Informe um tenant válido em ?tenant=' })
-    return null
-  }
-  if (!TENANTS[tenant].features.billing) {
-    res.status(403).json({ erro: `O módulo ${FEATURE_LABELS.billing} não está disponível para ${TENANTS[tenant].name}.` })
-    return null
-  }
-  return tenant
-}
 
-function texto(valor: unknown): string {
-  return typeof valor === 'string' ? valor.trim() : ''
-}
 
 /** Regras do domínio (Pagamento, Atendimento) viram 409; o índice único do banco também. */
 function responderConflito(res: Response, falha: unknown): void {
   if (falha instanceof Error && 'code' in falha) {
-    if (falha.code !== 'SQLITE_CONSTRAINT_UNIQUE') throw falha
+    if (!erroSqlite(falha, 'UNIQUE')) throw falha
     res.status(409).json({ erro: 'Este atendimento já foi usado em outro pagamento.' })
     return
   }
@@ -113,7 +98,7 @@ export function criarRotasPagamentos(db: Banco): Router {
 
   // READ — histórico de pagamentos do tenant
   rotas.get('/', (req, res) => {
-    const tenant = lerTenantComCobranca(req, res)
+    const tenant = lerTenant(req, res, 'billing')
     if (!tenant) return
     const linhas = db.prepare(`${SELECT_PAGAMENTO} WHERE p.tenant_id = ? ORDER BY p.criado_em DESC, p.id DESC`).all(tenant) as LinhaPagamento[]
     res.json(linhas.map((linha) => paraJson(paraPagamento(linha), linha)))
@@ -121,26 +106,17 @@ export function criarRotasPagamentos(db: Banco): Router {
 
   // CREATE — Tarifa (Strategy) → [TarifaComConvenio] → Pagamento (Strategy) → processar() → SQLite
   rotas.post('/', (req, res) => {
-    const tenant = lerTenantComCobranca(req, res)
+    const tenant = lerTenant(req, res, 'billing')
     if (!tenant) return
     const corpo = req.body ?? {}
 
     // 1. Dados do formulário (o valor NUNCA vem do navegador)
     const duracao = corpo.duration
-    if (typeof duracao !== 'number' || !Number.isInteger(duracao) || duracao < 1 || duracao > 24) {
-      res.status(400).json({ erro: 'A duração deve ser um número inteiro de 1 a 24 horas.' })
-      return
-    }
+    if (typeof duracao !== 'number' || !Number.isInteger(duracao) || duracao < 1 || duracao > 24) return enviarErro(res, 400, 'A duração deve ser um número inteiro de 1 a 24 horas.')
     const forma = texto(corpo.method) as PaymentMethod
-    if (!PAYMENT_METHODS.includes(forma)) {
-      res.status(400).json({ erro: `Forma de pagamento inválida. Use: ${PAYMENT_METHODS.join(', ')}.` })
-      return
-    }
+    if (!PAYMENT_METHODS.includes(forma)) return enviarErro(res, 400, `Forma de pagamento inválida. Use: ${PAYMENT_METHODS.join(', ')}.`)
     const parcelas = forma === 'Crédito' ? corpo.installments : 1
-    if (typeof parcelas !== 'number' || !Number.isInteger(parcelas)) {
-      res.status(400).json({ erro: 'Informe o número de parcelas.' })
-      return
-    }
+    if (typeof parcelas !== 'number' || !Number.isInteger(parcelas)) return enviarErro(res, 400, 'Informe o número de parcelas.')
     let estrategiaPagamento: EstrategiaPagamento
     try {
       estrategiaPagamento = CRIAR_ESTRATEGIA_PAGAMENTO[forma](parcelas) // PagamentoCredito valida o limite de parcelas
@@ -151,30 +127,18 @@ export function criarRotasPagamentos(db: Banco): Router {
 
     // 2. Veículo (e reserva opcional) precisam ser DESTE tenant
     const veiculo = db.prepare('SELECT id FROM veiculos WHERE id = ? AND tenant_id = ?').get(corpo.vehicleId, tenant) as { id: number } | undefined
-    if (!veiculo) {
-      res.status(400).json({ erro: 'Veículo não encontrado neste cliente.' })
-      return
-    }
+    if (!veiculo) return enviarErro(res, 400, 'Veículo não encontrado neste cliente.')
     let reservaId: number | null = null
     if (corpo.reservationId) {
       const reserva = db.prepare('SELECT id, veiculo_id FROM reservas WHERE id = ? AND tenant_id = ?').get(corpo.reservationId, tenant) as { id: number; veiculo_id: number } | undefined
-      if (!reserva) {
-        res.status(400).json({ erro: 'Reserva não encontrada neste cliente.' })
-        return
-      }
-      if (reserva.veiculo_id !== veiculo.id) {
-        res.status(400).json({ erro: 'A reserva informada é de outro veículo.' })
-        return
-      }
+      if (!reserva) return enviarErro(res, 400, 'Reserva não encontrada neste cliente.')
+      if (reserva.veiculo_id !== veiculo.id) return enviarErro(res, 400, 'A reserva informada é de outro veículo.')
       reservaId = reserva.id
     }
 
     // 3. Tarifa ativa → Tarifa + Strategy (etapa de Tarifas)
     const linhaTarifa = db.prepare('SELECT * FROM tarifas WHERE tenant_id = ? AND ativa = 1').get(tenant) as LinhaTarifa | undefined
-    if (!linhaTarifa) {
-      res.status(409).json({ erro: 'Não há tarifa ativa neste cliente. Ative uma tarifa antes de cobrar.' })
-      return
-    }
+    if (!linhaTarifa) return enviarErro(res, 409, 'Não há tarifa ativa neste cliente. Ative uma tarifa antes de cobrar.')
     const tarifa = paraTarifa(linhaTarifa)
     let tarifaAPagar = tarifa
 
@@ -183,22 +147,13 @@ export function criarRotasPagamentos(db: Banco): Router {
     let linhaAtendimento: LinhaAtendimento | undefined
     const numero = texto(corpo.attendanceNumber).toUpperCase()
     if (numero) {
-      if (!TENANTS[tenant].features.medicalAgreement) {
-        res.status(400).json({ erro: `${FEATURE_LABELS.medicalAgreement} não está disponível para ${TENANTS[tenant].name}.` })
-        return
-      }
+      if (!TENANTS[tenant].features.medicalAgreement) return enviarErro(res, 400, `${FEATURE_LABELS.medicalAgreement} não está disponível para ${TENANTS[tenant].name}.`)
       linhaAtendimento = db.prepare('SELECT * FROM atendimentos WHERE tenant_id = ? AND numero = ?').get(tenant, numero) as LinhaAtendimento | undefined
-      if (!linhaAtendimento) {
-        res.status(404).json({ erro: 'Atendimento não localizado.' })
-        return
-      }
+      if (!linhaAtendimento) return enviarErro(res, 404, 'Atendimento não localizado.')
       const linhaConvenio = db.prepare('SELECT * FROM convenios WHERE id = ? AND tenant_id = ?').get(linhaAtendimento.convenio_id, tenant) as LinhaConvenio
       const convenio = paraConvenio(linhaConvenio)
       atendimento = paraAtendimento(linhaAtendimento, convenio)
-      if (!atendimento.validarElegibilidade()) {
-        res.status(409).json({ erro: atendimento.motivoInelegibilidade() })
-        return
-      }
+      if (!atendimento.validarElegibilidade()) return enviarErro(res, 409, atendimento.motivoInelegibilidade())
       // A Strategy do convênio é composta sobre a Strategy da tarifa ativa
       tarifaAPagar = new Tarifa(tarifa.id, `${tarifa.nome} + ${convenio.nome}`, new TarifaComConvenio(tarifa.estrategia, convenio))
     }
@@ -236,13 +191,10 @@ export function criarRotasPagamentos(db: Banco): Router {
 
   // UPDATE — estorno pelo domínio (o benefício do convênio NÃO é devolvido)
   rotas.put('/:id/refund', (req, res) => {
-    const tenant = lerTenantComCobranca(req, res)
+    const tenant = lerTenant(req, res, 'billing')
     if (!tenant) return
     const linha = buscarPagamento(db, req.params.id, tenant)
-    if (!linha) {
-      res.status(404).json({ erro: 'Pagamento não encontrado.' })
-      return
-    }
+    if (!linha) return enviarErro(res, 404, 'Pagamento não encontrado.')
     const pagamento = paraPagamento(linha)
     try {
       pagamento.estornar() // só pagamentos aprovados
@@ -257,17 +209,11 @@ export function criarRotasPagamentos(db: Banco): Router {
 
   // DELETE — só pagamentos estornados
   rotas.delete('/:id', (req, res) => {
-    const tenant = lerTenantComCobranca(req, res)
+    const tenant = lerTenant(req, res, 'billing')
     if (!tenant) return
     const linha = buscarPagamento(db, req.params.id, tenant)
-    if (!linha) {
-      res.status(404).json({ erro: 'Pagamento não encontrado.' })
-      return
-    }
-    if (paraPagamento(linha).status !== 'estornado') {
-      res.status(409).json({ erro: 'Somente pagamentos estornados podem ser excluídos. Estorne o pagamento antes.' })
-      return
-    }
+    if (!linha) return enviarErro(res, 404, 'Pagamento não encontrado.')
+    if (paraPagamento(linha).status !== 'estornado') return enviarErro(res, 409, 'Somente pagamentos estornados podem ser excluídos. Estorne o pagamento antes.')
     db.prepare('DELETE FROM pagamentos WHERE id = ? AND tenant_id = ?').run(linha.id, tenant)
     res.status(204).end()
   })
