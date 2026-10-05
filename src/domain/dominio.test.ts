@@ -266,6 +266,42 @@ describe('Atendimento', () => {
   })
 })
 
+describe('Convenio e Atendimento reconstruídos a partir do banco', () => {
+  const agora = new Date(2026, 9, 5, 12, 0)
+
+  it('uma linha de convenios vira um Convenio com a descrição correta', () => {
+    const linhas = [
+      { id: 1, nome: 'Saúde Plena', tipo_beneficio: 'isencao' as const, valor_beneficio: 0, ativo: 1 },
+      { id: 2, nome: 'VidaCare', tipo_beneficio: 'percentual' as const, valor_beneficio: 50, ativo: 1 },
+      { id: 3, nome: 'Bem Estar', tipo_beneficio: 'horasGratis' as const, valor_beneficio: 2, ativo: 0 },
+    ]
+    const convenios = linhas.map((linha) => new Convenio(String(linha.id), linha.nome, linha.tipo_beneficio, linha.valor_beneficio, linha.ativo === 1))
+    expect(convenios.map((convenio) => convenio.descricaoBeneficio())).toEqual(['Isenção de 100%', 'Desconto de 50%', '2 horas gratuitas'])
+    expect(convenios[2].ativo).toBe(false)
+  })
+
+  it('motivoInelegibilidade explica cada regra de validarElegibilidade', () => {
+    const ativo = new Convenio('1', 'Saúde Plena', 'isencao')
+    const inativo = new Convenio('2', 'Plano Antigo', 'percentual', 30, false)
+    const duasHorasAtras = new Date(2026, 9, 5, 10, 0)
+
+    const elegivel = new Atendimento('1', 'ATD-48291', 'Helena Moreira', ativo, duasHorasAtras)
+    const comInativo = new Atendimento('2', 'ATD-55120', 'João Lima', inativo, duasHorasAtras)
+    const antigo = new Atendimento('3', 'ATD-30017', 'Marta Dias', ativo, new Date(2026, 9, 2, 12, 0))
+    const usado = new Atendimento('4', 'ATD-90442', 'Paulo Reis', ativo, duasHorasAtras)
+    usado.beneficioAplicado = true // como vem do banco (beneficio_aplicado = 1)
+    const formato = new Atendimento('5', 'XYZ', 'Ana', ativo, duasHorasAtras)
+
+    expect(elegivel.motivoInelegibilidade(agora)).toBeNull()
+    expect(elegivel.validarElegibilidade(agora)).toBe(true)
+    expect(comInativo.motivoInelegibilidade(agora)).toBe('O convênio Plano Antigo está inativo.')
+    expect(antigo.motivoInelegibilidade(agora)).toBe('O atendimento tem mais de 24 horas.')
+    expect(usado.motivoInelegibilidade(agora)).toBe('O benefício deste atendimento já foi utilizado.')
+    expect(formato.motivoInelegibilidade(agora)).toBe('O número do atendimento deve seguir o formato ATD-00000.')
+    expect([comInativo, antigo, usado, formato].every((atendimento) => !atendimento.validarElegibilidade(agora))).toBe(true)
+  })
+})
+
 describe('Notificacao', () => {
   it('formata a mensagem com horário e pode ser marcada como lida', () => {
     const notificacao = new Notificacao('n-1', 'Vaga ocupada', 'A-01 foi ocupada.', 'alerta', new Date(2026, 8, 5, 14, 32))

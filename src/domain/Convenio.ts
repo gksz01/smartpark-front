@@ -1,6 +1,8 @@
+import type { BenefitType } from '../core/types'
 import type { EstrategiaTarifa } from './strategies/tarifa/EstrategiaTarifa'
 
-export type TipoBeneficio = 'isencao' | 'percentual' | 'horasGratis'
+// Mesmos tipos usados pela tela e pela tabela convenios (core/types.ts).
+export type TipoBeneficio = BenefitType
 
 /**
  * Convênio médico que concede benefício no estacionamento do Hospital.

@@ -4,7 +4,7 @@ import { INITIAL_STATE } from '../data/mocks'
 import { resetDatabase } from '../services/api'
 import { createVehicle, deleteVehicle, listVehicles, updateVehicle, type VehicleInput } from '../services/vehiclesApi'
 import { isRole, isTenantId, TENANTS } from './config'
-import type { DemoState, MedicalValidation, Payment, Role, TenantId, Vehicle } from './types'
+import type { DemoState, Payment, Role, TenantId, Vehicle } from './types'
 
 const STORAGE_KEY = 'smartpark:parte3:v1'
 
@@ -15,7 +15,6 @@ type Action =
   | { type: 'SAVE_VEHICLE'; vehicle: Vehicle }
   | { type: 'DELETE_VEHICLE'; id: string }
   | { type: 'ADD_PAYMENT'; payment: Payment }
-  | { type: 'ADD_MEDICAL'; validation: MedicalValidation }
   | { type: 'RESET' }
 
 function reducer(state: DemoState, action: Action): DemoState {
@@ -30,7 +29,6 @@ function reducer(state: DemoState, action: Action): DemoState {
     }
     case 'DELETE_VEHICLE': return { ...state, vehicles: state.vehicles.filter((vehicle) => vehicle.id !== action.id) }
     case 'ADD_PAYMENT': return { ...state, payments: [action.payment, ...state.payments] }
-    case 'ADD_MEDICAL': return { ...state, medicalValidations: [action.validation, ...state.medicalValidations] }
     case 'RESET': return structuredClone(INITIAL_STATE)
   }
 }
@@ -85,7 +83,6 @@ interface AppContextValue {
   saveVehicle: (vehicle: VehicleInput & { id?: string }) => Promise<Vehicle>
   deleteVehicle: (id: string) => Promise<void>
   addPayment: (payment: Payment) => void
-  addMedicalValidation: (validation: MedicalValidation) => void
   resetDemo: () => Promise<void>
 }
 
@@ -147,7 +144,6 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'DELETE_VEHICLE', id })
     },
     addPayment: (payment) => dispatch({ type: 'ADD_PAYMENT', payment }),
-    addMedicalValidation: (validation) => dispatch({ type: 'ADD_MEDICAL', validation }),
     resetDemo: async () => {
       try {
         await resetDatabase()

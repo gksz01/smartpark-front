@@ -11,5 +11,7 @@ const vagas = db.prepare('SELECT COUNT(*) AS total FROM vagas').get() as { total
 const acessos = db.prepare('SELECT COUNT(*) AS total FROM acessos').get() as { total: number }
 const tarifas = db.prepare('SELECT COUNT(*) AS total FROM tarifas').get() as { total: number }
 const reservas = db.prepare('SELECT COUNT(*) AS total FROM reservas').get() as { total: number }
-console.log(`Banco restaurado em ${CAMINHO_BANCO} (${veiculos.total} veículos, ${usuarios.total} usuários, ${vagas.total} vagas, ${acessos.total} acessos, ${tarifas.total} tarifas, ${reservas.total} reservas).`)
+const convenios = db.prepare('SELECT COUNT(*) AS total FROM convenios').get() as { total: number }
+const atendimentos = db.prepare('SELECT COUNT(*) AS total FROM atendimentos').get() as { total: number }
+console.log(`Banco restaurado em ${CAMINHO_BANCO} (${veiculos.total} veículos, ${usuarios.total} usuários, ${vagas.total} vagas, ${acessos.total} acessos, ${tarifas.total} tarifas, ${reservas.total} reservas, ${convenios.total} convênios, ${atendimentos.total} atendimentos).`)
 db.close()

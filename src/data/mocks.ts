@@ -12,5 +12,4 @@ export const INITIAL_STATE: DemoState = {
   academicMode: true,
   vehicles: [], // carregados do banco pela API (ver server/seed/seed.ts)
   payments: [],
-  medicalValidations: [],
 }

@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { TenantProvider, TenantThemeProvider } from './core/app-context'
 import { createAccess, deleteAccess, listAccess, updateAccess } from './test/fakeAccessApi'
+import { createAgreement, deleteAgreement, listAgreements, updateAgreement, validateAttendance } from './test/fakeAgreementsApi'
 import { cancelReservation, createReservation, deleteReservation, listReservations, updateReservation } from './test/fakeReservationsApi'
 import { createSpace, deleteSpace, listSpaces, updateSpace } from './test/fakeSpacesApi'
 import { createTariff, deleteTariff, listTariffs, updateTariff } from './test/fakeTariffsApi'
@@ -681,5 +682,122 @@ describe('reservas', () => {
     renderRoute('/app/reservations?tenant=hospital&role=driver')
     expect(screen.getByText(/Reserva não está disponível para Hospital Santa Clara/)).toBeInTheDocument()
     expect(listReservations).not.toHaveBeenCalled()
+  })
+})
+
+describe('convênios (Hospital)', () => {
+  const linhaDo = (nome: string) => within(screen.getByRole('table')).getByText(nome).closest('tr') as HTMLElement
+
+  it('lista os convênios do banco com a descrição vinda da classe Convenio', async () => {
+    renderRoute('/admin/medical-agreement?tenant=hospital&role=admin')
+    expect(await screen.findByRole('heading', { name: 'Convênios cadastrados' })).toBeInTheDocument()
+    expect(within(linhaDo('Saúde Plena')).getByText('Isenção de 100%')).toBeInTheDocument()
+    expect(within(linhaDo('VidaCare')).getByText('Desconto de 50%')).toBeInTheDocument()
+    expect(within(linhaDo('Bem Estar')).getByText('2 horas gratuitas')).toBeInTheDocument()
+    expect(listAgreements).toHaveBeenCalledWith('hospital')
+  })
+
+  it('cadastra um convênio percentual', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/medical-agreement?tenant=hospital&role=admin')
+    await user.click(await screen.findByRole('button', { name: /Novo convênio/ }))
+    await user.type(screen.getByLabelText('Nome'), 'CuidarMais')
+    await user.selectOptions(screen.getByLabelText('Tipo de benefício'), 'percentual')
+    await user.type(screen.getByLabelText('Percentual de desconto (%)'), '25')
+    await user.click(screen.getByRole('button', { name: 'Salvar convênio' }))
+    expect(await screen.findByText('Convênio CuidarMais cadastrado com sucesso.')).toBeInTheDocument()
+    expect(within(linhaDo('CuidarMais')).getByText('Desconto de 25%')).toBeInTheDocument()
+    expect(createAgreement).toHaveBeenCalledWith('hospital', { name: 'CuidarMais', benefitType: 'percentual', benefitValue: 25, active: true })
+  })
+
+  it('na isenção o formulário não pede valor', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/medical-agreement?tenant=hospital&role=admin')
+    await user.click(await screen.findByRole('button', { name: /Novo convênio/ }))
+    expect(screen.queryByLabelText(/Percentual|Horas grátis/)).not.toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Tipo de benefício'), 'horasGratis')
+    expect(screen.getByLabelText('Horas grátis')).toBeInTheDocument()
+  })
+
+  it('edita o benefício e desativa um convênio', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/medical-agreement?tenant=hospital&role=admin')
+    await user.click(await screen.findByRole('button', { name: 'Editar Bem Estar' }))
+    await user.clear(screen.getByLabelText('Horas grátis'))
+    await user.type(screen.getByLabelText('Horas grátis'), '3')
+    await user.selectOptions(screen.getByLabelText('Situação'), 'inativo')
+    await user.click(screen.getByRole('button', { name: 'Salvar convênio' }))
+    expect(await screen.findByText('Convênio Bem Estar atualizado com sucesso.')).toBeInTheDocument()
+    expect(within(linhaDo('Bem Estar')).getByText('3 horas gratuitas')).toBeInTheDocument()
+    expect(within(linhaDo('Bem Estar')).getByText('Inativo')).toBeInTheDocument()
+    expect(updateAgreement).toHaveBeenCalledWith('hospital', '3', { name: 'Bem Estar', benefitType: 'horasGratis', benefitValue: 3, active: false })
+  })
+
+  it('exclui um convênio sem atendimentos', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/medical-agreement?tenant=hospital&role=admin')
+    await user.click(await screen.findByRole('button', { name: 'Excluir MedSul' }))
+    await user.click(screen.getByRole('button', { name: 'Excluir' }))
+    expect(await screen.findByText('Convênio excluído.')).toBeInTheDocument()
+    expect(within(screen.getByRole('table')).queryByText('MedSul')).not.toBeInTheDocument()
+    expect(deleteAgreement).toHaveBeenCalledWith('hospital', '5')
+  })
+
+  it('mostra o erro da API ao excluir convênio com atendimentos', async () => {
+    deleteAgreement.mockRejectedValueOnce(new Error('O convênio Saúde Plena possui 2 atendimento(s) vinculado(s) e não pode ser excluído. Desative-o em vez de excluir.'))
+    const user = userEvent.setup()
+    renderRoute('/admin/medical-agreement?tenant=hospital&role=admin')
+    await user.click(await screen.findByRole('button', { name: 'Excluir Saúde Plena' }))
+    await user.click(screen.getByRole('button', { name: 'Excluir' }))
+    expect(await screen.findByText(/possui 2 atendimento\(s\) vinculado\(s\)/)).toBeInTheDocument()
+    expect(linhaDo('Saúde Plena')).toBeInTheDocument()
+  })
+
+  it('valida um atendimento elegível pela API', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/medical-agreement?tenant=hospital&role=admin')
+    await user.click(screen.getByRole('button', { name: 'ATD-48291' }))
+    await user.click(screen.getByRole('button', { name: /Localizar atendimento/ }))
+    expect(await screen.findByRole('heading', { name: 'Elegível para benefício' })).toBeInTheDocument()
+    expect(screen.getByText('Helena Moreira')).toBeInTheDocument()
+    expect(screen.getByText('O benefício será aplicado no pagamento do estacionamento.', { exact: false })).toBeInTheDocument()
+    expect(validateAttendance).toHaveBeenCalledWith('hospital', 'ATD-48291')
+  })
+
+  it('mostra o motivo quando o atendimento não é elegível', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/medical-agreement?tenant=hospital&role=admin')
+    await user.type(screen.getByLabelText('Número do atendimento'), 'ATD-55120')
+    await user.click(screen.getByRole('button', { name: /Localizar atendimento/ }))
+    expect(await screen.findByRole('heading', { name: 'Não elegível' })).toBeInTheDocument()
+    expect(screen.getByText('O convênio Plano Antigo está inativo.')).toBeInTheDocument()
+  })
+
+  it('mostra erro para atendimento inexistente', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/medical-agreement?tenant=hospital&role=admin')
+    await user.type(screen.getByLabelText('Número do atendimento'), 'ATD-00000')
+    await user.click(screen.getByRole('button', { name: /Localizar atendimento/ }))
+    expect(await screen.findByText('Atendimento não localizado. Tente ATD-48291.')).toBeInTheDocument()
+  })
+
+  it('o Hospital acessa; Shopping, Condomínio e Empresa são bloqueados', () => {
+    renderRoute('/admin/medical-agreement?tenant=hospital&role=operator')
+    expect(screen.getByRole('heading', { name: 'Convênio médico' })).toBeInTheDocument()
+    for (const [tenant, nome] of [['shopping', 'Shopping Center Aurora'], ['condominium', 'Residencial Horizonte'], ['company', 'Nexora Tecnologia']]) {
+      cleanup()
+      renderRoute(`/admin/medical-agreement?tenant=${tenant}&role=admin`)
+      expect(screen.getByText(new RegExp(`Convênio médico não está disponível para ${nome}`))).toBeInTheDocument()
+    }
+    expect(listAgreements).not.toHaveBeenCalledWith('shopping')
+  })
+
+  it('o menu só mostra Convênios quando medicalAgreement está ligado', () => {
+    renderRoute('/admin/dashboard?tenant=hospital&role=admin')
+    expect(screen.getByRole('link', { name: /Convênios/ })).toBeInTheDocument()
+    cleanup()
+
+    renderRoute('/admin/dashboard?tenant=shopping&role=admin')
+    expect(screen.queryByRole('link', { name: /Convênios/ })).not.toBeInTheDocument()
   })
 })

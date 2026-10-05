@@ -1,3 +1,5 @@
+import { TENANTS } from '../../src/core/config'
+import type { TenantId } from '../../src/core/types'
 import { VARIANTE_POR_TENANT } from '../../src/domain/factories/variante/variantePorTenant'
 import { Reserva } from '../../src/domain/Reserva'
 import { configuracaoDaEstrategia } from '../../src/domain/strategies/tarifa/estrategiaPorTipo'
@@ -113,6 +115,30 @@ const RESERVAS_INICIAIS = [
   { tenant_id: 'shopping', placa: 'BRA2E19', codigo_vaga: 'B-14', data: diaRelativo(-3), hora: '14:00', duracao_horas: 1, status: 'concluida' },
 ]
 
+/** ISO de "agora menos algumas horas": mantém os atendimentos dentro (ou fora) da janela de 24h da classe Atendimento. */
+function horasAtras(horas: number): string {
+  return new Date(Date.now() - horas * 60 * 60 * 1000).toISOString()
+}
+
+/** Convênios de demonstração (só entram em tenants com medicalAgreement=true). */
+const CONVENIOS_INICIAIS = [
+  { tenant_id: 'hospital', nome: 'Saúde Plena', tipo_beneficio: 'isencao', valor_beneficio: 0, ativo: 1 },
+  { tenant_id: 'hospital', nome: 'VidaCare', tipo_beneficio: 'percentual', valor_beneficio: 50, ativo: 1 },
+  { tenant_id: 'hospital', nome: 'Bem Estar', tipo_beneficio: 'horasGratis', valor_beneficio: 2, ativo: 1 },
+  { tenant_id: 'hospital', nome: 'Plano Antigo', tipo_beneficio: 'percentual', valor_beneficio: 30, ativo: 0 },
+  { tenant_id: 'hospital', nome: 'MedSul', tipo_beneficio: 'horasGratis', valor_beneficio: 1, ativo: 1 }, // sem atendimentos: pode ser excluído
+]
+
+/** Atendimentos de demonstração. As datas são relativas ao momento do seed. */
+const ATENDIMENTOS_INICIAIS = [
+  { tenant_id: 'hospital', convenio: 'Saúde Plena', numero: 'ATD-48291', paciente: 'Helena Moreira', horas_atras: 2, beneficio_aplicado: 0 }, // elegível
+  { tenant_id: 'hospital', convenio: 'VidaCare', numero: 'ATD-71305', paciente: 'Roberto Alves', horas_atras: 5, beneficio_aplicado: 0 }, // elegível
+  { tenant_id: 'hospital', convenio: 'Bem Estar', numero: 'ATD-10928', paciente: 'Beatriz Souza', horas_atras: 1, beneficio_aplicado: 0 }, // elegível
+  { tenant_id: 'hospital', convenio: 'Plano Antigo', numero: 'ATD-55120', paciente: 'João Lima', horas_atras: 3, beneficio_aplicado: 0 }, // convênio inativo
+  { tenant_id: 'hospital', convenio: 'VidaCare', numero: 'ATD-30017', paciente: 'Marta Dias', horas_atras: 72, beneficio_aplicado: 0 }, // mais de 24h
+  { tenant_id: 'hospital', convenio: 'Saúde Plena', numero: 'ATD-90442', paciente: 'Paulo Reis', horas_atras: 4, beneficio_aplicado: 1 }, // benefício já usado
+]
+
 export function popularVeiculos(db: Banco): void {
   const inserir = db.prepare(`
     INSERT INTO veiculos (tenant_id, apelido, placa, modelo, cor, unidade, tag_rfid)
@@ -185,6 +211,34 @@ export function popularReservas(db: Banco): void {
   }
 }
 
+export function popularConvenios(db: Banco): void {
+  const inserirConvenio = db.prepare(`
+    INSERT INTO convenios (tenant_id, nome, tipo_beneficio, valor_beneficio, ativo)
+    VALUES (@tenant_id, @nome, @tipo_beneficio, @valor_beneficio, @ativo)
+  `)
+  const inserirAtendimento = db.prepare(`
+    INSERT INTO atendimentos (tenant_id, convenio_id, numero, paciente, data_atendimento, beneficio_aplicado)
+    VALUES (@tenant_id, @convenio_id, @numero, @paciente, @data_atendimento, @beneficio_aplicado)
+  `)
+  const comConvenio = (tenant: string) => TENANTS[tenant as TenantId].features.medicalAgreement
+
+  for (const convenio of CONVENIOS_INICIAIS) {
+    if (comConvenio(convenio.tenant_id)) inserirConvenio.run(convenio)
+  }
+  for (const atendimento of ATENDIMENTOS_INICIAIS) {
+    if (!comConvenio(atendimento.tenant_id)) continue
+    const convenio = db.prepare('SELECT id FROM convenios WHERE tenant_id = ? AND nome = ?').get(atendimento.tenant_id, atendimento.convenio) as { id: number }
+    inserirAtendimento.run({
+      tenant_id: atendimento.tenant_id,
+      convenio_id: convenio.id,
+      numero: atendimento.numero,
+      paciente: atendimento.paciente,
+      data_atendimento: horasAtras(atendimento.horas_atras),
+      beneficio_aplicado: atendimento.beneficio_aplicado,
+    })
+  }
+}
+
 export function popularBanco(db: Banco): void {
   popularVeiculos(db)
   popularUsuarios(db)
@@ -192,9 +246,10 @@ export function popularBanco(db: Banco): void {
   popularAcessos(db)
   popularTarifas(db)
   popularReservas(db)
+  popularConvenios(db)
 }
 
-function tabelaVazia(db: Banco, tabela: 'veiculos' | 'usuarios' | 'vagas' | 'acessos' | 'tarifas' | 'reservas'): boolean {
+function tabelaVazia(db: Banco, tabela: 'veiculos' | 'usuarios' | 'vagas' | 'acessos' | 'tarifas' | 'reservas' | 'convenios'): boolean {
   const { total } = db.prepare(`SELECT COUNT(*) AS total FROM ${tabela}`).get() as { total: number }
   return total === 0
 }
@@ -211,6 +266,7 @@ export function popularTabelasVazias(db: Banco): string[] {
   if (tabelaVazia(db, 'acessos')) { popularAcessos(db); populadas.push('acessos') }
   if (tabelaVazia(db, 'tarifas')) { popularTarifas(db); populadas.push('tarifas') }
   if (tabelaVazia(db, 'reservas')) { popularReservas(db); populadas.push('reservas') }
+  if (tabelaVazia(db, 'convenios')) { popularConvenios(db); populadas.push('convenios') }
   return populadas
 }
 
@@ -218,12 +274,14 @@ export function popularTabelasVazias(db: Banco): string[] {
 export function resetarBanco(db: Banco): void {
   const resetar = db.transaction(() => {
     db.exec('DELETE FROM reservas') // primeiro: aponta para veiculos e vagas (foreign keys)
+    db.exec('DELETE FROM atendimentos') // aponta para convenios
     db.exec('DELETE FROM veiculos')
     db.exec('DELETE FROM usuarios')
     db.exec('DELETE FROM vagas')
     db.exec('DELETE FROM acessos')
     db.exec('DELETE FROM tarifas')
-    db.exec("DELETE FROM sqlite_sequence WHERE name IN ('veiculos', 'usuarios', 'vagas', 'acessos', 'tarifas', 'reservas')") // reinicia os ids em 1
+    db.exec('DELETE FROM convenios')
+    db.exec("DELETE FROM sqlite_sequence WHERE name IN ('veiculos', 'usuarios', 'vagas', 'acessos', 'tarifas', 'reservas', 'convenios', 'atendimentos')") // reinicia os ids em 1
     popularBanco(db)
   })
   resetar()

@@ -1,9 +1,11 @@
 import { Activity, AlertTriangle, ArrowRight, BadgeCheck, Car, Check, CircleDollarSign, CircleParking, Clock3, DoorOpen, Edit3, HeartHandshake, LogIn, LogOut, Palette, Plus, ShieldCheck, Stethoscope, TicketCheck, Trash2, UserRound, UsersRound, X } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useTenant } from '../../core/app-context'
-import { ACCESS_DIRECTIONS, ACCESS_IDENTIFIERS, ACCESS_LABELS, ACCESS_STATUSES, FEATURE_LABELS, METRIC_LABELS, METRIC_VALUES, ROLE_LABELS, SPACE_STATUSES } from '../../core/config'
+import { ACCESS_DIRECTIONS, ACCESS_IDENTIFIERS, ACCESS_LABELS, ACCESS_STATUSES, BENEFIT_TYPE_LABELS, BENEFIT_TYPES, FEATURE_LABELS, METRIC_LABELS, METRIC_VALUES, ROLE_LABELS, SPACE_STATUSES } from '../../core/config'
 import { RoleGate } from '../../core/gates'
-import type { AccessDirection, AccessRecord, AccessStatus, DashboardMetricId, MedicalValidation, ParkingSpace, SpaceStatus, SpaceType } from '../../core/types'
+import type { AccessDirection, AccessRecord, AccessStatus, Agreement, AttendanceCheck, BenefitType, DashboardMetricId, ParkingSpace, SpaceStatus, SpaceType } from '../../core/types'
+import { Convenio } from '../../domain/Convenio'
+import { createAgreement, deleteAgreement, listAgreements, updateAgreement, validateAttendance } from '../../services/agreementsApi'
 import { createAccess, deleteAccess, listAccess, updateAccess } from '../../services/accessApi'
 import { createSpace, deleteSpace, listSpaces, updateSpace, type SpaceInput } from '../../services/spacesApi'
 import { Alert, Button, Card, ConfirmDialog, DataTable, FormField, PageHeader, StatCard, StatusBadge, VariationInfo, type Column } from '../../shared/ui'
@@ -411,24 +413,258 @@ export function ConfigurationPage() {
   </div>
 }
 
-const AGREEMENTS = [
-  { number: 'ATD-48291', patient: 'Helena Moreira', agreement: 'Saúde Plena', benefit: 'Isenção de 100%' },
-  { number: 'ATD-71305', patient: 'Roberto Alves', agreement: 'VidaCare', benefit: 'Desconto de 50%' },
-  { number: 'ATD-10928', patient: 'Beatriz Souza', agreement: 'Bem Estar', benefit: '2 horas gratuitas' },
-]
+const MEDICAL_STEPS = ['Atendimento', 'Localização', 'Elegibilidade', 'Benefício', 'Pagamento']
+const EMPTY_AGREEMENT_FORM = { name: '', benefitType: 'isencao' as BenefitType, benefitValue: '', active: true }
+const BENEFIT_VALUE_LABELS: Record<BenefitType, string> = { isencao: '', percentual: 'Percentual de desconto (%)', horasGratis: 'Horas grátis' }
+
+/** A descrição do benefício vem da classe de domínio Convenio. */
+function benefitDescription(agreement: Agreement): string {
+  return new Convenio(agreement.id, agreement.name, agreement.benefitType, agreement.benefitValue, agreement.active).descricaoBeneficio()
+}
 
 export function MedicalAgreementPage() {
-  const { addMedicalValidation, state } = useTenant()
+  const { tenant, dataVersion } = useTenant()
+  // Área 1: validação de atendimento
   const [attendance, setAttendance] = useState('')
-  const [found, setFound] = useState<(typeof AGREEMENTS)[number] | null>(null)
+  const [found, setFound] = useState<AttendanceCheck | null>(null)
+  const [searchError, setSearchError] = useState('')
+  // Área 2: convênios cadastrados (CRUD)
+  const [agreements, setAgreements] = useState<Agreement[]>([])
+  const [editing, setEditing] = useState<Agreement | null>(null)
+  const [form, setForm] = useState(EMPTY_AGREEMENT_FORM)
+  const [formOpen, setFormOpen] = useState(false)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [message, setMessage] = useState('')
   const [error, setError] = useState('')
-  const [confirmed, setConfirmed] = useState(false)
-  const search = (event: FormEvent) => { event.preventDefault(); const result = AGREEMENTS.find((item) => item.number.toLowerCase() === attendance.trim().toLowerCase()); setFound(result ?? null); setConfirmed(false); setError(result ? '' : 'Atendimento não localizado. Tente ATD-48291.') }
-  const confirm = () => { if (!found) return; const validation: MedicalValidation = { id: crypto.randomUUID(), attendanceNumber: found.number, patient: found.patient, agreement: found.agreement, benefit: found.benefit, createdAt: new Date().toISOString() }; addMedicalValidation(validation); setConfirmed(true) }
-  return <div className="admin-page"><PageHeader eyebrow="Módulo exclusivo do Hospital" title="Convênio médico" description="Valide o benefício de estacionamento associado a um atendimento." action={<StatusBadge tone="success"><Stethoscope size={14} /> Hospital</StatusBadge>} />
-    <VariationInfo>O módulo está separado do núcleo e só é ativado por `medicalAgreement`. Ainda assim, reutiliza layout, formulários, botões, cards, alertas, tema e autorização compartilhados.</VariationInfo>
-    <div className="medical-steps">{['Atendimento', 'Localização', 'Elegibilidade', 'Benefício', 'Confirmação'].map((step, index) => <div key={step} className={(found && index < 4) || (confirmed && index === 4) ? 'done' : index === 0 && !found ? 'active' : ''}><span>{(found && index < 4) || (confirmed && index === 4) ? <Check size={14} /> : index + 1}</span><small>{step}</small></div>)}</div>
-    <div className="medical-grid"><Card className="medical-search"><div className="medical-icon"><HeartHandshake size={28} /></div><p className="eyebrow">Etapa 1</p><h2>Localizar atendimento</h2><p>Informe o número recebido na recepção ou o código do convênio.</p><form onSubmit={search}><FormField label="Número do atendimento"><input required value={attendance} onChange={(event) => setAttendance(event.target.value)} placeholder="Ex.: ATD-48291" /></FormField><Button type="submit" className="w-full justify-center">Localizar atendimento <ArrowRight size={17} /></Button></form><small className="demo-hint">Para demonstrar, use <button onClick={() => setAttendance('ATD-48291')}>ATD-48291</button>.</small>{error && <Alert tone="danger">{error}</Alert>}</Card>
-    <Card className={`eligibility-card ${found ? 'visible' : ''}`}>{found ? confirmed ? <div className="confirmation-state"><span><Check size={32} /></span><p className="eyebrow">Benefício aplicado</p><h2>Validação concluída</h2><p>O benefício <strong>{found.benefit}</strong> foi associado ao estacionamento de {found.patient}.</p><div className="receipt-code">VAL-{state.medicalValidations.length + 2840}</div><Button variant="secondary" onClick={() => { setAttendance(''); setFound(null); setConfirmed(false) }}>Nova validação</Button></div> : <><div className="eligibility-header"><span><BadgeCheck size={22} /></span><div><p className="eyebrow">Atendimento localizado</p><h2>Elegível para benefício</h2></div></div><div className="patient-card"><span><UserRound size={22} /></span><div><small>Paciente</small><strong>{found.patient}</strong><p>{found.number}</p></div></div><div className="eligibility-lines"><span>Convênio <strong>{found.agreement}</strong></span><span>Elegibilidade <StatusBadge tone="success">Ativa</StatusBadge></span><span>Benefício <strong>{found.benefit}</strong></span></div><Alert><strong>Elegibilidade validada.</strong><br />A regra mockada do convênio permite aplicar o benefício.</Alert><Button className="w-full justify-center" onClick={confirm}>Aplicar benefício <ArrowRight size={17} /></Button></> : <div className="medical-placeholder"><span><Stethoscope size={32} /></span><h2>Aguardando consulta</h2><p>Os dados do paciente, elegibilidade e benefício aparecerão aqui.</p></div>}</Card></div>
-  </div>
+
+  // READ: carrega os convênios do tenant ativo (e de novo após "Restaurar dados")
+  useEffect(() => {
+    let current = true
+    listAgreements(tenant.id)
+      .then((list) => {
+        if (!current) return
+        setAgreements(list)
+        setError('')
+      })
+      .catch((failure: Error) => {
+        if (!current) return
+        setAgreements([])
+        setError(`Não foi possível carregar os convênios: ${failure.message}`)
+      })
+    return () => { current = false }
+  }, [tenant.id, dataVersion])
+
+  // Validação: a API usa Atendimento.validarElegibilidade() e não consome o benefício
+  const search = async (event: FormEvent) => {
+    event.preventDefault()
+    try {
+      setFound(await validateAttendance(tenant.id, attendance))
+      setSearchError('')
+    } catch (failure) {
+      setFound(null)
+      setSearchError(`${(failure as Error).message} Tente ATD-48291.`)
+    }
+  }
+  const resetSearch = () => {
+    setAttendance('')
+    setFound(null)
+    setSearchError('')
+  }
+
+  const openCreate = () => {
+    setEditing(null)
+    setForm(EMPTY_AGREEMENT_FORM)
+    setFormOpen(true)
+    setMessage('')
+    setError('')
+  }
+  const openEdit = (agreement: Agreement) => {
+    setEditing(agreement)
+    setForm({ name: agreement.name, benefitType: agreement.benefitType, benefitValue: String(agreement.benefitValue), active: agreement.active })
+    setFormOpen(true)
+    setMessage('')
+    setError('')
+  }
+  const close = () => setFormOpen(false)
+
+  // CREATE / UPDATE
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    const input = { name: form.name, benefitType: form.benefitType, benefitValue: form.benefitType === 'isencao' ? 0 : Number(form.benefitValue), active: form.active }
+    try {
+      if (editing) {
+        const updated = await updateAgreement(tenant.id, editing.id, input)
+        setAgreements((current) => current.map((agreement) => agreement.id === updated.id ? updated : agreement))
+        setMessage(`Convênio ${updated.name} atualizado com sucesso.`)
+      } else {
+        const created = await createAgreement(tenant.id, input)
+        setAgreements((current) => [...current, created])
+        setMessage(`Convênio ${created.name} cadastrado com sucesso.`)
+      }
+      setFormOpen(false)
+    } catch (failure) {
+      setError((failure as Error).message)
+    }
+  }
+
+  // DELETE: a API recusa convênios com atendimentos vinculados
+  const confirmDelete = async (id: string) => {
+    setDeleteId(null)
+    try {
+      await deleteAgreement(tenant.id, id)
+      setAgreements((current) => current.filter((agreement) => agreement.id !== id))
+      setMessage('Convênio excluído.')
+    } catch (failure) {
+      setError((failure as Error).message)
+    }
+  }
+
+  const stepDone = (index: number) => found !== null && (found.eligible ? index < 4 : index < 2)
+
+  const columns: Column<Agreement>[] = [
+    { header: 'Convênio', render: (row) => <strong>{row.name}</strong> },
+    { header: 'Benefício', render: (row) => benefitDescription(row) },
+    { header: 'Atendimentos', render: (row) => row.attendanceCount },
+    { header: 'Situação', render: (row) => <StatusBadge tone={row.active ? 'success' : 'neutral'}>{row.active ? 'Ativo' : 'Inativo'}</StatusBadge> },
+    {
+      header: 'Ações',
+      render: (row) => (
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => openEdit(row)} aria-label={`Editar ${row.name}`}><Edit3 size={16} /> Editar</Button>
+          <Button variant="ghost" onClick={() => setDeleteId(row.id)} aria-label={`Excluir ${row.name}`}><Trash2 size={16} /> Excluir</Button>
+        </div>
+      ),
+    },
+  ]
+
+  return (
+    <div className="admin-page">
+      <PageHeader
+        eyebrow="Módulo exclusivo do Hospital"
+        title="Convênio médico"
+        description="Valide o benefício de estacionamento associado a um atendimento."
+        action={<StatusBadge tone="success"><Stethoscope size={14} /> Hospital</StatusBadge>}
+      />
+      <VariationInfo>
+        O módulo está separado do núcleo e só é ativado por `medicalAgreement` (menu, rota, tela e API). Convênios e atendimentos vêm do banco;
+        a elegibilidade é decidida pela classe Atendimento e a descrição do benefício pela classe Convenio.
+      </VariationInfo>
+
+      <div className="medical-steps">
+        {MEDICAL_STEPS.map((step, index) => (
+          <div key={step} className={stepDone(index) ? 'done' : index === 0 && !found ? 'active' : ''}>
+            <span>{stepDone(index) ? <Check size={14} /> : index + 1}</span>
+            <small>{step}</small>
+          </div>
+        ))}
+      </div>
+
+      <div className="medical-grid">
+        <Card className="medical-search">
+          <div className="medical-icon"><HeartHandshake size={28} /></div>
+          <p className="eyebrow">Etapa 1</p>
+          <h2>Localizar atendimento</h2>
+          <p>Informe o número recebido na recepção ou o código do convênio.</p>
+          <form onSubmit={search}>
+            <FormField label="Número do atendimento">
+              <input required value={attendance} onChange={(event) => setAttendance(event.target.value)} placeholder="Ex.: ATD-48291" />
+            </FormField>
+            <Button type="submit" className="w-full justify-center">Localizar atendimento <ArrowRight size={17} /></Button>
+          </form>
+          <small className="demo-hint">Para demonstrar, use <button onClick={() => setAttendance('ATD-48291')}>ATD-48291</button>.</small>
+          {searchError && <Alert tone="danger">{searchError}</Alert>}
+        </Card>
+
+        <Card className={`eligibility-card ${found ? 'visible' : ''}`}>
+          {found ? (
+            <>
+              <div className="eligibility-header">
+                <span>{found.eligible ? <BadgeCheck size={22} /> : <AlertTriangle size={22} />}</span>
+                <div><p className="eyebrow">Atendimento localizado</p><h2>{found.eligible ? 'Elegível para benefício' : 'Não elegível'}</h2></div>
+              </div>
+              <div className="patient-card">
+                <span><UserRound size={22} /></span>
+                <div><small>Paciente</small><strong>{found.patient}</strong><p>{found.number}</p></div>
+              </div>
+              <div className="eligibility-lines">
+                <span>Convênio <strong>{found.agreement}</strong></span>
+                <span>Elegibilidade <StatusBadge tone={found.eligible ? 'success' : 'danger'}>{found.eligible ? 'Ativa' : 'Recusada'}</StatusBadge></span>
+                <span>Benefício <strong>{found.benefit}</strong></span>
+              </div>
+              {found.eligible
+                ? <Alert><strong>Elegibilidade validada.</strong><br />O benefício será aplicado no pagamento do estacionamento.</Alert>
+                : <Alert tone="danger"><strong>Benefício indisponível.</strong><br />{found.reason}</Alert>}
+              <Button variant="secondary" className="w-full justify-center" onClick={resetSearch}>Nova validação</Button>
+            </>
+          ) : (
+            <div className="medical-placeholder">
+              <span><Stethoscope size={32} /></span>
+              <h2>Aguardando consulta</h2>
+              <p>Os dados do paciente, elegibilidade e benefício aparecerão aqui.</p>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <section className="content-section">
+        {message && <Alert>{message}</Alert>}
+        {error && !formOpen && <Alert tone="danger">{error}</Alert>}
+        <Card>
+          <div className="table-toolbar">
+            <div>
+              <h2>Convênios cadastrados</h2>
+              <p>{agreements.length} convênios · com atendimentos vinculados não podem ser excluídos</p>
+            </div>
+            <Button onClick={openCreate}><Plus size={17} /> Novo convênio</Button>
+          </div>
+          <DataTable rows={agreements} columns={columns} emptyMessage="Nenhum convênio cadastrado." />
+        </Card>
+      </section>
+
+      {formOpen && (
+        <div className="modal-backdrop">
+          <form className="modal" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="agreement-form-title">
+            <button type="button" className="modal-close" onClick={close} aria-label="Fechar"><X size={18} /></button>
+            <p className="eyebrow">Cadastro de convênios</p>
+            <h2 id="agreement-form-title">{editing ? 'Editar convênio' : 'Novo convênio'}</h2>
+            <div className="mt-6 space-y-4">
+              <FormField label="Nome">
+                <input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ex.: Saúde Plena" />
+              </FormField>
+              <FormField label="Tipo de benefício">
+                <select value={form.benefitType} onChange={(event) => setForm({ ...form, benefitType: event.target.value as BenefitType })}>
+                  {BENEFIT_TYPES.map((type) => <option key={type} value={type}>{BENEFIT_TYPE_LABELS[type]}</option>)}
+                </select>
+              </FormField>
+              {form.benefitType !== 'isencao' && (
+                <FormField label={BENEFIT_VALUE_LABELS[form.benefitType]}>
+                  <input required type="number" min="1" max={form.benefitType === 'percentual' ? 100 : undefined} step="1" value={form.benefitValue} onChange={(event) => setForm({ ...form, benefitValue: event.target.value })} />
+                </FormField>
+              )}
+              <FormField label="Situação">
+                <select value={form.active ? 'ativo' : 'inativo'} onChange={(event) => setForm({ ...form, active: event.target.value === 'ativo' })}>
+                  <option value="ativo">Ativo</option>
+                  <option value="inativo">Inativo</option>
+                </select>
+              </FormField>
+            </div>
+            {error && <div className="mt-5"><Alert tone="danger">{error}</Alert></div>}
+            <div className="mt-7 flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={close}>Cancelar</Button>
+              <Button type="submit">Salvar convênio</Button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {deleteId && (
+        <ConfirmDialog
+          title="Excluir convênio?"
+          description="Somente convênios sem atendimentos vinculados podem ser excluídos."
+          onCancel={() => setDeleteId(null)}
+          onConfirm={() => confirmDelete(deleteId)}
+        />
+      )}
+    </div>
+  )
 }

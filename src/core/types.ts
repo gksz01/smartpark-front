@@ -31,6 +31,9 @@ export type SpaceStatus = 'Livre' | 'Ocupada' | 'Bloqueada' | 'Reservada'
 /** Algoritmos de tarifa que podem ser gravados (cada um corresponde a uma Strategy). */
 export type TariffStrategyType = 'POR_HORA' | 'DIARIA' | 'ISENTA'
 
+/** Mesmos tipos de benefício da classe de domínio Convenio. */
+export type BenefitType = 'isencao' | 'percentual' | 'horasGratis'
+
 /** Tipos de pessoa cadastráveis. Cada tenant escolhe os seus em personTypes. */
 export type PersonType = 'motorista' | 'morador' | 'visitante' | 'funcionario' | 'paciente' | 'acompanhante'
 
@@ -177,13 +180,28 @@ export interface ParkingSpace {
   requirement: string
 }
 
-export interface MedicalValidation {
+/** Convênio médico do tenant (tabela convenios). */
+export interface Agreement {
   id: string
-  attendanceNumber: string
+  name: string
+  benefitType: BenefitType
+  /** Percentual (percentual) ou quantidade de horas (horasGratis); 0 na isenção. */
+  benefitValue: number
+  active: boolean
+  /** Quantos atendimentos usam este convênio (com atendimentos, não pode ser excluído). */
+  attendanceCount: number
+}
+
+/** Resultado da validação de um atendimento (POST /api/agreements/validate). */
+export interface AttendanceCheck {
+  number: string
   patient: string
   agreement: string
+  /** Texto de convenio.descricaoBeneficio(). */
   benefit: string
-  createdAt: string
+  eligible: boolean
+  /** Motivo vindo de atendimento.motivoInelegibilidade(); vazio quando elegível. */
+  reason: string
 }
 
 export type DashboardMetricId =
@@ -203,5 +221,4 @@ export interface DemoState {
   academicMode: boolean
   vehicles: Vehicle[]
   payments: Payment[]
-  medicalValidations: MedicalValidation[]
 }

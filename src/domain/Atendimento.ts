@@ -26,12 +26,18 @@ export class Atendimento {
    * atendimento nas últimas 24 horas e benefício ainda não utilizado.
    */
   validarElegibilidade(agora: Date = new Date()): boolean {
+    return this.motivoInelegibilidade(agora) === null
+  }
+
+  /** Mesmas regras de validarElegibilidade(), dizendo qual delas falhou (null = elegível). */
+  motivoInelegibilidade(agora: Date = new Date()): string | null {
     const horasDesdeAtendimento = (agora.getTime() - this.dataAtendimento.getTime()) / (60 * 60 * 1000)
-    return FORMATO_ATENDIMENTO.test(this.numero)
-      && this.convenio.ativo
-      && horasDesdeAtendimento >= 0
-      && horasDesdeAtendimento <= VALIDADE_HORAS
-      && !this.beneficioAplicado
+    if (!FORMATO_ATENDIMENTO.test(this.numero)) return 'O número do atendimento deve seguir o formato ATD-00000.'
+    if (!this.convenio.ativo) return `O convênio ${this.convenio.nome} está inativo.`
+    if (horasDesdeAtendimento < 0) return 'O atendimento ainda não aconteceu.'
+    if (horasDesdeAtendimento > VALIDADE_HORAS) return `O atendimento tem mais de ${VALIDADE_HORAS} horas.`
+    if (this.beneficioAplicado) return 'O benefício deste atendimento já foi utilizado.'
+    return null
   }
 
   /** Marca o benefício como utilizado, impedindo o uso duplicado. */

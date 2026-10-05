@@ -74,3 +74,24 @@ CREATE TABLE IF NOT EXISTS reservas (
 
 -- Uma vaga não pode ter duas reservas confirmadas ao mesmo tempo: o próprio banco recusa.
 CREATE UNIQUE INDEX IF NOT EXISTS uma_reserva_confirmada_por_vaga ON reservas (vaga_id) WHERE status = 'confirmada';
+
+CREATE TABLE IF NOT EXISTS convenios (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id        TEXT    NOT NULL CHECK (tenant_id IN ('shopping', 'condominium', 'hospital', 'company')),
+  nome             TEXT    NOT NULL,
+  tipo_beneficio   TEXT    NOT NULL CHECK (tipo_beneficio IN ('isencao', 'percentual', 'horasGratis')),  -- tipos da classe Convenio
+  valor_beneficio  REAL    NOT NULL DEFAULT 0 CHECK (valor_beneficio >= 0),  -- percentual ou horas; 0 na isenção
+  ativo            INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1)),
+  UNIQUE (tenant_id, nome)
+);
+
+CREATE TABLE IF NOT EXISTS atendimentos (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id           TEXT    NOT NULL CHECK (tenant_id IN ('shopping', 'condominium', 'hospital', 'company')),
+  convenio_id         INTEGER NOT NULL REFERENCES convenios (id),
+  numero              TEXT    NOT NULL,  -- formato ATD-00000 (regra da classe Atendimento)
+  paciente            TEXT    NOT NULL,
+  data_atendimento    TEXT    NOT NULL,  -- ISO 8601
+  beneficio_aplicado  INTEGER NOT NULL DEFAULT 0 CHECK (beneficio_aplicado IN (0, 1)),  -- consumido no pagamento
+  UNIQUE (tenant_id, numero)
+);
