@@ -1,10 +1,12 @@
-import { Edit3, Plus, Trash2, X } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useTenant } from '../../core/app-context'
 import { PERSON_TYPE_LABELS, ROLE_LABELS } from '../../core/config'
 import type { PersonType, Role, User } from '../../core/types'
 import { Usuario } from '../../domain/Usuario'
 import { createUser, deleteUser, listUsers, updateUser, type UserInput } from '../../services/usersApi'
+import { FormModal } from '../../shared/crud/FormModal'
+import { RowActions } from '../../shared/crud/RowActions'
 import { Alert, Button, Card, ConfirmDialog, DataTable, FormField, PageHeader, StatusBadge, VariationInfo, type Column } from '../../shared/ui'
 
 export function UsersPage() {
@@ -102,10 +104,7 @@ export function UsersPage() {
     {
       header: 'Ações',
       render: (row) => (
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => openEdit(row)} aria-label={`Editar ${row.name}`}><Edit3 size={16} /> Editar</Button>
-          <Button variant="ghost" onClick={() => setDeleteId(row.id)} aria-label={`Excluir ${row.name}`}><Trash2 size={16} /> Excluir</Button>
-        </div>
+        <RowActions label={`${row.name}`} onEdit={() => openEdit(row)} onDelete={() => setDeleteId(row.id)} />
       ),
     },
   ]
@@ -142,42 +141,30 @@ export function UsersPage() {
       </Card>
 
       {formOpen && (
-        <div className="modal-backdrop">
-          <form className="modal" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="user-form-title">
-            <button type="button" className="modal-close" onClick={close} aria-label="Fechar"><X size={18} /></button>
-            <p className="eyebrow">Cadastro de pessoas</p>
-            <h2 id="user-form-title">{editing ? 'Editar pessoa' : 'Nova pessoa'}</h2>
-            <div className="mt-6 space-y-4">
-              <FormField label="Nome">
-                <input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Nome completo" />
-              </FormField>
-              <FormField label="Documento">
-                <input required value={form.document} onChange={(event) => setForm({ ...form, document: event.target.value })} placeholder="CPF ou RG" />
-              </FormField>
-              <FormField label="Tipo">
-                <select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as PersonType })}>
-                  {tenant.personTypes.map((type) => <option key={type} value={type}>{PERSON_TYPE_LABELS[type]}</option>)}
-                </select>
-              </FormField>
-              <FormField label="Perfil">
-                <select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as Role })}>
-                  {tenant.allowedRoles.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
-                </select>
-              </FormField>
-              <FormField label="Situação">
-                <select value={form.active ? 'ativo' : 'inativo'} onChange={(event) => setForm({ ...form, active: event.target.value === 'ativo' })}>
-                  <option value="ativo">Ativo</option>
-                  <option value="inativo">Inativo</option>
-                </select>
-              </FormField>
-            </div>
-            {error && <div className="mt-5"><Alert tone="danger">{error}</Alert></div>}
-            <div className="mt-7 flex justify-end gap-2">
-              <Button type="button" variant="ghost" onClick={close}>Cancelar</Button>
-              <Button type="submit">Salvar pessoa</Button>
-            </div>
-          </form>
-        </div>
+        <FormModal id="user-form" eyebrow="Cadastro de pessoas" title={editing ? 'Editar pessoa' : 'Nova pessoa'} error={error} submitLabel="Salvar pessoa" onSubmit={submit} onClose={close}>
+          <FormField label="Nome">
+            <input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Nome completo" />
+          </FormField>
+          <FormField label="Documento">
+            <input required value={form.document} onChange={(event) => setForm({ ...form, document: event.target.value })} placeholder="CPF ou RG" />
+          </FormField>
+          <FormField label="Tipo">
+            <select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as PersonType })}>
+              {tenant.personTypes.map((type) => <option key={type} value={type}>{PERSON_TYPE_LABELS[type]}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Perfil">
+            <select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as Role })}>
+              {tenant.allowedRoles.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Situação">
+            <select value={form.active ? 'ativo' : 'inativo'} onChange={(event) => setForm({ ...form, active: event.target.value === 'ativo' })}>
+              <option value="ativo">Ativo</option>
+              <option value="inativo">Inativo</option>
+            </select>
+          </FormField>
+        </FormModal>
       )}
 
       {deleteId && (

@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, CalendarDays, Car, Check, Clock3, CreditCard, Edit3, KeyRound, MapPin, Navigation, QrCode, RotateCcw, Search, ShieldCheck, Sparkles, TicketCheck, Trash2, UserRoundCheck, WalletCards, X, XCircle, Zap } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CalendarDays, Car, Check, Clock3, CreditCard, Edit3, KeyRound, MapPin, Navigation, QrCode, RotateCcw, Search, ShieldCheck, Sparkles, TicketCheck, Trash2, UserRoundCheck, WalletCards, XCircle, Zap } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTenant } from '../../core/app-context'
@@ -18,6 +18,9 @@ import { listAgreements, validateAttendance } from '../../services/agreementsApi
 import { createPayment, deletePayment, listPayments, refundPayment } from '../../services/paymentsApi'
 import { listSpaces } from '../../services/spacesApi'
 import { listTariffs } from '../../services/tariffsApi'
+import { FormModal } from '../../shared/crud/FormModal'
+import { RowActions } from '../../shared/crud/RowActions'
+import { SelectField } from '../../shared/crud/SelectField'
 import { Alert, Button, Card, ConfirmDialog, DataTable, EmptyState, FormField, OccupancyBar, PageHeader, StatusBadge, VariationInfo, type Column } from '../../shared/ui'
 import { formatarDataIso, formatarMoeda } from '../../domain/formatacao'
 
@@ -76,7 +79,7 @@ export function ParkingDetailPage() {
   </div>
 }
 
-const DURATION_OPTIONS = [1, 2, 4, 8]
+const DURATION_CHOICES = [1, 2, 4, 8].map((hours) => ({ value: String(hours), label: `${hours} ${hours === 1 ? 'hora' : 'horas'}` }))
 const RESERVATION_TONE = { pendente: 'warning', confirmada: 'success', cancelada: 'neutral', concluida: 'info' } as const
 
 /** Tarifa ativa → Tarifa (Context) com a Strategy gravada no banco. */
@@ -266,11 +269,7 @@ export function ReservationPage() {
               <FormField label="Horário">
                 <input required type="time" value={form.time} onChange={(event) => setForm({ ...form, time: event.target.value })} />
               </FormField>
-              <FormField label="Período">
-                <select value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })}>
-                  {DURATION_OPTIONS.map((hours) => <option key={hours} value={hours}>{hours} {hours === 1 ? 'hora' : 'horas'}</option>)}
-                </select>
-              </FormField>
+              <SelectField label="Período" value={form.duration} options={DURATION_CHOICES} onChange={(duration) => setForm({ ...form, duration })} />
               <FormField label="Veículo">
                 <select required value={vehicleId} onChange={(event) => setForm({ ...form, vehicleId: event.target.value })}>
                   {state.vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.nickname} · {vehicle.plate}</option>)}
@@ -304,35 +303,30 @@ export function ReservationPage() {
       </section>
 
       {editing && (
-        <div className="modal-backdrop">
-          <form className="modal" onSubmit={submitEdit} role="dialog" aria-modal="true" aria-labelledby="reservation-edit-title">
-            <button type="button" className="modal-close" onClick={() => setEditing(null)} aria-label="Fechar"><X size={18} /></button>
-            <p className="eyebrow">Vaga {editing.spaceCode}</p>
-            <h2 id="reservation-edit-title">Alterar reserva</h2>
-            <div className="mt-6 space-y-4">
-              <FormField label="Data">
-                <input required type="date" value={editForm.date} onChange={(event) => setEditForm({ ...editForm, date: event.target.value })} />
-              </FormField>
-              <FormField label="Horário">
-                <input required type="time" value={editForm.time} onChange={(event) => setEditForm({ ...editForm, time: event.target.value })} />
-              </FormField>
-              <FormField label="Período">
-                <select value={editForm.duration} onChange={(event) => setEditForm({ ...editForm, duration: event.target.value })}>
-                  {DURATION_OPTIONS.map((hours) => <option key={hours} value={hours}>{hours} {hours === 1 ? 'hora' : 'horas'}</option>)}
-                </select>
-              </FormField>
-            </div>
+        <FormModal
+          id="reservation-edit"
+          eyebrow={`Vaga ${editing.spaceCode}`}
+          title="Alterar reserva"
+          error={error}
+          submitLabel="Salvar alteração"
+          cancelLabel="Fechar"
+          onSubmit={submitEdit}
+          onClose={() => setEditing(null)}
+          extra={(
             <div className="estimate mt-5">
               <span>Nova estimativa</span>
               <strong>{editEstimate === null ? 'Sem tarifa ativa' : formatarMoeda(editEstimate)}</strong>
             </div>
-            {error && <div className="mt-5"><Alert tone="danger">{error}</Alert></div>}
-            <div className="mt-7 flex justify-end gap-2">
-              <Button type="button" variant="ghost" onClick={() => setEditing(null)}>Fechar</Button>
-              <Button type="submit">Salvar alteração</Button>
-            </div>
-          </form>
-        </div>
+          )}
+        >
+          <FormField label="Data">
+            <input required type="date" value={editForm.date} onChange={(event) => setEditForm({ ...editForm, date: event.target.value })} />
+          </FormField>
+          <FormField label="Horário">
+            <input required type="time" value={editForm.time} onChange={(event) => setEditForm({ ...editForm, time: event.target.value })} />
+          </FormField>
+          <SelectField label="Período" value={editForm.duration} options={DURATION_CHOICES} onChange={(duration) => setEditForm({ ...editForm, duration })} />
+        </FormModal>
       )}
 
       {deleteId && (
@@ -347,9 +341,9 @@ export function ReservationPage() {
   )
 }
 
-const PAYMENT_DURATIONS = [1, 2, 3, 4, 8]
+const PAYMENT_DURATIONS = [1, 2, 3, 4, 8].map((hours) => ({ value: String(hours), label: `${hours} ${hours === 1 ? 'hora' : 'horas'}` }))
 const PAYMENT_TONE = { pendente: 'warning', aprovado: 'success', estornado: 'neutral' } as const
-const INSTALLMENT_OPTIONS = Array.from({ length: PagamentoCredito.MAXIMO_PARCELAS }, (_, index) => index + 1)
+const INSTALLMENT_OPTIONS = Array.from({ length: PagamentoCredito.MAXIMO_PARCELAS }, (_, index) => ({ value: String(index + 1), label: `${index + 1}x` }))
 
 /**
  * Prévia pelo mesmo caminho da API: Tarifa (Strategy) → [TarifaComConvenio] → Strategy de pagamento.
@@ -488,10 +482,9 @@ export function PaymentsPage() {
     {
       header: 'Ações',
       render: (row) => (
-        <div className="flex gap-2">
+        <RowActions label={row.receipt} onDelete={() => setDeleteId(row.id)}>
           {row.status === 'aprovado' && <Button variant="secondary" onClick={() => refund(row)} aria-label={`Estornar ${row.receipt}`}><RotateCcw size={16} /> Estornar</Button>}
-          <Button variant="ghost" onClick={() => setDeleteId(row.id)} aria-label={`Excluir ${row.receipt}`}><Trash2 size={16} /> Excluir</Button>
-        </div>
+        </RowActions>
       ),
     },
   ]
@@ -534,11 +527,7 @@ export function PaymentsPage() {
                 {state.vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.nickname} · {vehicle.plate}</option>)}
               </select>
             </FormField>
-            <FormField label="Duração">
-              <select value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })}>
-                {PAYMENT_DURATIONS.map((hours) => <option key={hours} value={hours}>{hours} {hours === 1 ? 'hora' : 'horas'}</option>)}
-              </select>
-            </FormField>
+            <SelectField label="Duração" value={form.duration} options={PAYMENT_DURATIONS} onChange={(duration) => setForm({ ...form, duration })} />
           </div>
           <FeatureGate feature="medicalAgreement">
             <div className="mt-4 space-y-2">
@@ -567,11 +556,7 @@ export function PaymentsPage() {
             ))}
           </div>
           {form.method === 'Crédito' && (
-            <FormField label="Parcelas">
-              <select value={form.installments} onChange={(event) => setForm({ ...form, installments: event.target.value })}>
-                {INSTALLMENT_OPTIONS.map((count) => <option key={count} value={count}>{count}x</option>)}
-              </select>
-            </FormField>
+            <SelectField label="Parcelas" value={form.installments} options={INSTALLMENT_OPTIONS} onChange={(installments) => setForm({ ...form, installments })} />
           )}
           {preview && <p className="mt-3 text-sm text-slate-500">{preview.detail}</p>}
           <Button className="mt-5 w-full justify-center" onClick={pay} disabled={!preview || !vehicleId}>

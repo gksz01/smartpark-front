@@ -1,10 +1,13 @@
-import { Activity, AlertTriangle, ArrowRight, BadgeCheck, Car, Check, CircleDollarSign, CircleParking, Clock3, DoorOpen, Edit3, HeartHandshake, LogIn, LogOut, Palette, Plus, ShieldCheck, Stethoscope, TicketCheck, Trash2, UserRound, UsersRound, X } from 'lucide-react'
+import { Activity, AlertTriangle, ArrowRight, BadgeCheck, Car, Check, CircleDollarSign, CircleParking, Clock3, DoorOpen, HeartHandshake, LogIn, LogOut, Palette, Plus, ShieldCheck, Stethoscope, TicketCheck, UserRound, UsersRound } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useTenant } from '../../core/app-context'
 import { ACCESS_DIRECTIONS, ACCESS_IDENTIFIERS, ACCESS_LABELS, ACCESS_STATUSES, BENEFIT_TYPE_LABELS, BENEFIT_TYPES, FEATURE_LABELS, METRIC_LABELS, METRIC_VALUES, ROLE_LABELS, SPACE_STATUSES } from '../../core/config'
 import { RoleGate } from '../../core/gates'
 import type { AccessDirection, AccessRecord, AccessStatus, Agreement, AttendanceCheck, BenefitType, DashboardMetricId, ParkingSpace, SpaceStatus, SpaceType } from '../../core/types'
 import { Convenio } from '../../domain/Convenio'
+import { FormModal } from '../../shared/crud/FormModal'
+import { RowActions } from '../../shared/crud/RowActions'
+import { SelectField } from '../../shared/crud/SelectField'
 import { createAgreement, deleteAgreement, listAgreements, updateAgreement, validateAttendance } from '../../services/agreementsApi'
 import { createAccess, deleteAccess, listAccess, updateAccess } from '../../services/accessApi'
 import { createSpace, deleteSpace, listSpaces, simulateSensor, updateSpace, type SpaceInput } from '../../services/spacesApi'
@@ -140,11 +143,9 @@ export function SpacesPage() {
     {
       header: 'Ações',
       render: (row) => (
-        <div className="flex gap-2">
+        <RowActions label={`vaga ${row.code}`} onEdit={() => openEdit(row)} onDelete={() => setDeleteId(row.id)}>
           {row.status !== 'Bloqueada' && <Button variant="secondary" onClick={() => runSensor(row)} aria-label={`Simular sensor na vaga ${row.code}`}><Activity size={16} /> Simular sensor</Button>}
-          <Button variant="secondary" onClick={() => openEdit(row)} aria-label={`Editar vaga ${row.code}`}><Edit3 size={16} /> Editar</Button>
-          <Button variant="ghost" onClick={() => setDeleteId(row.id)} aria-label={`Excluir vaga ${row.code}`}><Trash2 size={16} /> Excluir</Button>
-        </div>
+        </RowActions>
       ),
     },
   ]
@@ -195,36 +196,24 @@ export function SpacesPage() {
       </Card>
 
       {formOpen && (
-        <div className="modal-backdrop">
-          <form className="modal" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="space-form-title">
-            <button type="button" className="modal-close" onClick={close} aria-label="Fechar"><X size={18} /></button>
-            <p className="eyebrow">Cadastro de vagas</p>
-            <h2 id="space-form-title">{editing ? `Editar vaga ${editing.code}` : 'Nova vaga'}</h2>
-            <div className="mt-6 space-y-4">
-              <FormField label="Código">
-                <input required value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} placeholder="Ex.: A-05" />
-              </FormField>
-              <FormField label="Setor">
-                <input required value={form.sector} onChange={(event) => setForm({ ...form, sector: event.target.value })} placeholder="Ex.: A" />
-              </FormField>
-              <FormField label="Tipo">
-                <select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as SpaceType })}>
-                  {tenant.spaceTypes.map((type) => <option key={type}>{type}</option>)}
-                </select>
-              </FormField>
-              <FormField label="Status">
-                <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as SpaceStatus })}>
-                  {SPACE_STATUSES.map((item) => <option key={item}>{item}</option>)}
-                </select>
-              </FormField>
-            </div>
-            {error && <div className="mt-5"><Alert tone="danger">{error}</Alert></div>}
-            <div className="mt-7 flex justify-end gap-2">
-              <Button type="button" variant="ghost" onClick={close}>Cancelar</Button>
-              <Button type="submit">Salvar vaga</Button>
-            </div>
-          </form>
-        </div>
+        <FormModal id="space-form" eyebrow="Cadastro de vagas" title={editing ? `Editar vaga ${editing.code}` : 'Nova vaga'} error={error} submitLabel="Salvar vaga" onSubmit={submit} onClose={close}>
+          <FormField label="Código">
+            <input required value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} placeholder="Ex.: A-05" />
+          </FormField>
+          <FormField label="Setor">
+            <input required value={form.sector} onChange={(event) => setForm({ ...form, sector: event.target.value })} placeholder="Ex.: A" />
+          </FormField>
+          <FormField label="Tipo">
+            <select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as SpaceType })}>
+              {tenant.spaceTypes.map((type) => <option key={type}>{type}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Status">
+            <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as SpaceStatus })}>
+              {SPACE_STATUSES.map((item) => <option key={item}>{item}</option>)}
+            </select>
+          </FormField>
+        </FormModal>
       )}
 
       {deleteId && (
@@ -331,10 +320,7 @@ export function AccessPage() {
       header: 'Ações',
       render: (row) => (
         <RoleGate roles={['operator', 'admin']}>
-          <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => openEdit(row)} aria-label={`Editar acesso de ${row.person}`}><Edit3 size={16} /> Editar</Button>
-            <Button variant="ghost" onClick={() => setDeleteId(row.id)} aria-label={`Excluir acesso de ${row.person}`}><Trash2 size={16} /> Excluir</Button>
-          </div>
+          <RowActions label={`acesso de ${row.person}`} onEdit={() => openEdit(row)} onDelete={() => setDeleteId(row.id)} />
         </RoleGate>
       ),
     },
@@ -370,41 +356,41 @@ export function AccessPage() {
       </Card>
 
       {open && (
-        <div className="modal-backdrop">
-          <form className="modal" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="access-title">
-            <button type="button" className="modal-close" onClick={close} aria-label="Fechar"><X size={18} /></button>
-            <p className="eyebrow">Ação de operador</p>
-            <h2 id="access-title">{editing ? 'Editar acesso' : 'Liberação manual'}</h2>
-            <p>{editing ? 'Corrija os dados ou decida um acesso pendente.' : 'Registre uma exceção auditável para entrada ou saída.'}</p>
-            <div className="mt-6 space-y-4">
-              <FormField label="Nome do usuário">
-                <input required value={form.person} onChange={(event) => setForm({ ...form, person: event.target.value })} placeholder="Nome completo" />
-              </FormField>
-              <FormField label={identifier.label}>
-                <input required value={form.identifier} onChange={(event) => setForm({ ...form, identifier: event.target.value })} placeholder={identifier.placeholder} />
-              </FormField>
-              <FormField label="Movimento">
-                <select value={form.direction} onChange={(event) => setForm({ ...form, direction: event.target.value as AccessDirection })}>
-                  {ACCESS_DIRECTIONS.map((item) => <option key={item}>{item}</option>)}
-                </select>
-              </FormField>
-              {editing && (
-                <FormField label="Status" hint={statusLocked ? `Acesso já ${editing.status.toLowerCase()}: o status não pode mais mudar.` : undefined}>
-                  <select value={form.status} disabled={statusLocked} onChange={(event) => setForm({ ...form, status: event.target.value as AccessStatus })}>
-                    {ACCESS_STATUSES.map((item) => <option key={item}>{item}</option>)}
-                  </select>
-                </FormField>
-              )}
-              {form.status === 'Negado' && (
-                <FormField label="Motivo da negação">
-                  <input required value={form.denialReason} onChange={(event) => setForm({ ...form, denialReason: event.target.value })} placeholder="Ex.: Credencial expirada" />
-                </FormField>
-              )}
-            </div>
-            {error && <div className="mt-5"><Alert tone="danger">{error}</Alert></div>}
-            <Button type="submit" className="mt-6 w-full justify-center">{editing ? 'Salvar acesso' : 'Confirmar liberação'}</Button>
-          </form>
-        </div>
+        <FormModal
+          id="access"
+          eyebrow="Ação de operador"
+          title={editing ? 'Editar acesso' : 'Liberação manual'}
+          description={editing ? 'Corrija os dados ou decida um acesso pendente.' : 'Registre uma exceção auditável para entrada ou saída.'}
+          error={error}
+          submitLabel={editing ? 'Salvar acesso' : 'Confirmar liberação'}
+          cancelLabel={null}
+          onSubmit={submit}
+          onClose={close}
+        >
+          {/* Campos explícitos: o rótulo do identificador vem do accessMethod e o status segue as regras da classe Acesso */}
+          <FormField label="Nome do usuário">
+            <input required value={form.person} onChange={(event) => setForm({ ...form, person: event.target.value })} placeholder="Nome completo" />
+          </FormField>
+          <FormField label={identifier.label}>
+            <input required value={form.identifier} onChange={(event) => setForm({ ...form, identifier: event.target.value })} placeholder={identifier.placeholder} />
+          </FormField>
+          <SelectField label="Movimento" value={form.direction} options={ACCESS_DIRECTIONS} onChange={(direction) => setForm({ ...form, direction: direction as AccessDirection })} />
+          {editing && (
+            <SelectField
+              label="Status"
+              value={form.status}
+              options={ACCESS_STATUSES}
+              disabled={statusLocked}
+              hint={statusLocked ? `Acesso já ${editing.status.toLowerCase()}: o status não pode mais mudar.` : undefined}
+              onChange={(status) => setForm({ ...form, status: status as AccessStatus })}
+            />
+          )}
+          {form.status === 'Negado' && (
+            <FormField label="Motivo da negação">
+              <input required value={form.denialReason} onChange={(event) => setForm({ ...form, denialReason: event.target.value })} placeholder="Ex.: Credencial expirada" />
+            </FormField>
+          )}
+        </FormModal>
       )}
 
       {deleteId && (
@@ -544,10 +530,7 @@ export function MedicalAgreementPage() {
     {
       header: 'Ações',
       render: (row) => (
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => openEdit(row)} aria-label={`Editar ${row.name}`}><Edit3 size={16} /> Editar</Button>
-          <Button variant="ghost" onClick={() => setDeleteId(row.id)} aria-label={`Excluir ${row.name}`}><Trash2 size={16} /> Excluir</Button>
-        </div>
+        <RowActions label={`${row.name}`} onEdit={() => openEdit(row)} onDelete={() => setDeleteId(row.id)} />
       ),
     },
   ]
@@ -637,39 +620,27 @@ export function MedicalAgreementPage() {
       </section>
 
       {formOpen && (
-        <div className="modal-backdrop">
-          <form className="modal" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="agreement-form-title">
-            <button type="button" className="modal-close" onClick={close} aria-label="Fechar"><X size={18} /></button>
-            <p className="eyebrow">Cadastro de convênios</p>
-            <h2 id="agreement-form-title">{editing ? 'Editar convênio' : 'Novo convênio'}</h2>
-            <div className="mt-6 space-y-4">
-              <FormField label="Nome">
-                <input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ex.: Saúde Plena" />
-              </FormField>
-              <FormField label="Tipo de benefício">
-                <select value={form.benefitType} onChange={(event) => setForm({ ...form, benefitType: event.target.value as BenefitType })}>
-                  {BENEFIT_TYPES.map((type) => <option key={type} value={type}>{BENEFIT_TYPE_LABELS[type]}</option>)}
-                </select>
-              </FormField>
-              {form.benefitType !== 'isencao' && (
-                <FormField label={BENEFIT_VALUE_LABELS[form.benefitType]}>
-                  <input required type="number" min="1" max={form.benefitType === 'percentual' ? 100 : undefined} step="1" value={form.benefitValue} onChange={(event) => setForm({ ...form, benefitValue: event.target.value })} />
-                </FormField>
-              )}
-              <FormField label="Situação">
-                <select value={form.active ? 'ativo' : 'inativo'} onChange={(event) => setForm({ ...form, active: event.target.value === 'ativo' })}>
-                  <option value="ativo">Ativo</option>
-                  <option value="inativo">Inativo</option>
-                </select>
-              </FormField>
-            </div>
-            {error && <div className="mt-5"><Alert tone="danger">{error}</Alert></div>}
-            <div className="mt-7 flex justify-end gap-2">
-              <Button type="button" variant="ghost" onClick={close}>Cancelar</Button>
-              <Button type="submit">Salvar convênio</Button>
-            </div>
-          </form>
-        </div>
+        <FormModal id="agreement-form" eyebrow="Cadastro de convênios" title={editing ? 'Editar convênio' : 'Novo convênio'} error={error} submitLabel="Salvar convênio" onSubmit={submit} onClose={close}>
+          <FormField label="Nome">
+            <input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ex.: Saúde Plena" />
+          </FormField>
+          <FormField label="Tipo de benefício">
+            <select value={form.benefitType} onChange={(event) => setForm({ ...form, benefitType: event.target.value as BenefitType })}>
+              {BENEFIT_TYPES.map((type) => <option key={type} value={type}>{BENEFIT_TYPE_LABELS[type]}</option>)}
+            </select>
+          </FormField>
+          {form.benefitType !== 'isencao' && (
+            <FormField label={BENEFIT_VALUE_LABELS[form.benefitType]}>
+              <input required type="number" min="1" max={form.benefitType === 'percentual' ? 100 : undefined} step="1" value={form.benefitValue} onChange={(event) => setForm({ ...form, benefitValue: event.target.value })} />
+            </FormField>
+          )}
+          <FormField label="Situação">
+            <select value={form.active ? 'ativo' : 'inativo'} onChange={(event) => setForm({ ...form, active: event.target.value === 'ativo' })}>
+              <option value="ativo">Ativo</option>
+              <option value="inativo">Inativo</option>
+            </select>
+          </FormField>
+        </FormModal>
       )}
 
       {deleteId && (
