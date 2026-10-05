@@ -1,28 +1,8 @@
 import type { ParkingSpace, TenantId } from '../core/types'
-import { readResponse } from './api'
+import { createCrudApi, request } from './api'
 
 /** Dados enviados no formulário (id e requirement vêm da API). */
 export type SpaceInput = Omit<ParkingSpace, 'id' | 'requirement'>
-
-const jsonHeaders = { 'Content-Type': 'application/json' }
-
-// READ — GET /api/spaces?tenant=...
-export async function listSpaces(tenantId: TenantId): Promise<ParkingSpace[]> {
-  const response = await fetch(`/api/spaces?tenant=${tenantId}`)
-  return readResponse(response)
-}
-
-// CREATE — POST /api/spaces?tenant=...
-export async function createSpace(tenantId: TenantId, space: SpaceInput): Promise<ParkingSpace> {
-  const response = await fetch(`/api/spaces?tenant=${tenantId}`, { method: 'POST', headers: jsonHeaders, body: JSON.stringify(space) })
-  return readResponse(response)
-}
-
-// UPDATE — PUT /api/spaces/:id?tenant=...
-export async function updateSpace(tenantId: TenantId, id: string, space: SpaceInput): Promise<ParkingSpace> {
-  const response = await fetch(`/api/spaces/${id}?tenant=${tenantId}`, { method: 'PUT', headers: jsonHeaders, body: JSON.stringify(space) })
-  return readResponse(response)
-}
 
 /** Resultado da simulação do sensor: a vaga atualizada e as notificações do Observer. */
 export interface SensorResult {
@@ -30,14 +10,14 @@ export interface SensorResult {
   notifications: string[]
 }
 
-// OBSERVER — POST /api/spaces/:id/sensor?tenant=... (leitura simulada do sensor da vaga)
-export async function simulateSensor(tenantId: TenantId, id: string, reading: 'ocupada' | 'liberada'): Promise<SensorResult> {
-  const response = await fetch(`/api/spaces/${id}/sensor?tenant=${tenantId}`, { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ reading }) })
-  return readResponse(response)
-}
+// CRUD padrão em /api/spaces
+const spaces = createCrudApi<ParkingSpace, SpaceInput>('spaces')
+export const listSpaces = spaces.list
+export const createSpace = spaces.create
+export const updateSpace = spaces.update
+export const deleteSpace = spaces.remove
 
-// DELETE — DELETE /api/spaces/:id?tenant=...
-export async function deleteSpace(tenantId: TenantId, id: string): Promise<void> {
-  const response = await fetch(`/api/spaces/${id}?tenant=${tenantId}`, { method: 'DELETE' })
-  return readResponse(response)
+// OBSERVER — POST /api/spaces/:id/sensor (leitura simulada do sensor da vaga)
+export function simulateSensor(tenantId: TenantId, id: string, reading: 'ocupada' | 'liberada'): Promise<SensorResult> {
+  return request(tenantId, `spaces/${id}/sensor`, 'POST', { reading })
 }
