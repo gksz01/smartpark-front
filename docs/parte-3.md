@@ -2,9 +2,9 @@
 
 ## 1. Visão geral
 
-O SmartPark foi implementado como uma Linha de Produto de Software no frontend. Uma única SPA React atende Shopping Center, Condomínio Residencial, Hospital e Empresa. A aplicação não mantém cópias das páginas por cliente: componentes, rotas e layouts consultam a configuração central para decidir o que mostrar e permitir.
+O SmartPark foi implementado como uma Linha de Produto de Software. Uma única SPA React atende Shopping Center, Condomínio Residencial, Hospital e Empresa. A aplicação não mantém cópias das páginas por cliente: componentes, rotas, layouts e a API consultam a configuração central para decidir o que mostrar e permitir.
 
-O protótipo é local e usa dados mockados. Não existem integrações reais com sensores, leitores de placa, pagamento, mapas, autenticação ou cloud.
+Os 8 CRUDs (Veículos, Pessoas, Vagas, Acessos, Tarifas, Reservas, Convênios e Pagamentos) são persistidos por um backend Express com banco SQLite (`server/`), sempre isolados por `tenant_id`. Continuam mockados apenas os estacionamentos da busca e os indicadores do dashboard. O protótipo é local: não existem integrações reais com sensores, leitores de placa, gateways de pagamento, mapas, autenticação ou cloud (sensor e pagamento são simulados).
 
 ## 2. Configuração por cliente
 
@@ -15,7 +15,8 @@ O catálogo central em `src/core/config.ts` define cada `TenantConfig`:
 - método de acesso (`LPR`, `QR_CODE` ou `RFID`);
 - feature flags;
 - perfis permitidos;
-- campos adicionais do formulário de veículos;
+- campos adicionais do formulário de veículos (`vehicleFields`);
+- tipos de pessoa (`personTypes`) e tipos de vaga (`spaceTypes`);
 - cards que compõem o dashboard.
 
 O `TenantProvider` disponibiliza configuração e estado para toda a aplicação. O `TenantThemeProvider` converte os tokens em variáveis CSS. Assim, a marca muda sem carregar folhas de estilo diferentes.
@@ -48,48 +49,50 @@ O RBAC é declarado em `ROLE_PERMISSIONS`. Menus e rotas usam a mesma fonte:
 - Motorista: portal, busca, veículos, reserva e pagamento quando habilitados.
 - Morador e Funcionário: portal e veículos.
 - Visitante: portal e busca.
-- Operador: vagas, entradas/saídas e convênio quando habilitado.
-- Administrador: dashboard, vagas, acessos, configuração e convênio quando habilitado.
+- Operador: vagas, entradas/saídas, pessoas e convênio quando habilitado.
+- Administrador: dashboard, vagas, acessos, pessoas, tarifas (com cobrança), configuração e convênio quando habilitado.
 - Manobrista: veículos e movimentações.
 
-`FeatureGate` controla partes de uma interface. `RoleGate` controla conteúdo por papel. `ProtectedRoute` protege a navegação direta e informa se o bloqueio aconteceu por feature desligada ou permissão insuficiente.
+`FeatureGate` controla partes de uma interface. `RoleGate` controla conteúdo por papel. `ProtectedRoute` protege a navegação direta e informa se o bloqueio aconteceu por feature desligada ou permissão insuficiente. A API repete a checagem: módulos com feature desligada respondem 403.
 
-## 4. As 12 interfaces
+## 4. Os 8 CRUDs
 
-1. `/` — seleção de cliente e perfil, resumo das features e ativação do modo acadêmico.
-2. `/app/home` — home adaptativa do usuário com estacionamento ativo, ações rápidas, próximos locais, veículos e histórico.
-3. `/app/parking` — busca, filtros variáveis e mapa esquemático mockado.
-4. `/app/parking/central` — detalhes, ocupação, preço condicional, serviços e método de acesso.
-5. `/app/reservations/new` — reserva funcional, disponível apenas no Shopping.
-6. `/app/vehicles` — CRUD de veículos com formulário composto por configuração.
-7. `/app/payments` — pagamento e comprovante mockados, disponível no Shopping e Hospital.
-8. `/admin/dashboard` — cards administrativos compostos por tenant.
-9. `/admin/spaces` — vagas, setores, categorias e filtros.
-10. `/admin/access` — entradas/saídas com identificador variável e liberação manual.
-11. `/admin/configuration` — tema, método, flags e perfis da variante ativa.
-12. `/admin/medical-agreement` — fluxo exclusivo de convênio do Hospital.
+Cada CRUD permite cadastrar, listar, editar e excluir, gravando no SQLite pela API.
 
-Todas apresentam o bloco **“Variabilidade desta tela”** quando o modo acadêmico está ligado.
+| CRUD | Tela | API | Tabela | Destaques |
+|---|---|---|---|---|
+| Veículos | `/app/vehicles` | `/api/vehicles` | `veiculos` | campos variáveis por `vehicleFields`; placa validada pela classe `Veiculo` |
+| Pessoas | `/admin/users` | `/api/users` | `usuarios` | tipos por `personTypes` e perfis por `allowedRoles` |
+| Vagas | `/admin/spaces` | `/api/spaces` | `vagas` | Factory Method por tipo; tipos por `spaceTypes`; "Simular sensor" (Observer) |
+| Acessos | `/admin/access` | `/api/access` | `acessos` | identificador por `accessMethod`; decisões pela classe `Acesso` |
+| Tarifas | `/admin/tariffs` | `/api/tariffs` | `tarifas` | Strategy de tarifa; uma tarifa ativa; só com `billing` |
+| Reservas | `/app/reservations` | `/api/reservations` | `reservas` | Strategy na estimativa; Observer `EventosReserva`; só com `reservation` |
+| Convênios | `/admin/medical-agreement` | `/api/agreements` | `convenios`, `atendimentos` | só com `medicalAgreement` (Hospital) |
+| Pagamentos | `/app/payments` | `/api/payments` | `pagamentos` | Strategy de pagamento e `TarifaComConvenio`; estorno; só com `billing` |
+
+As demais telas completam a experiência: seleção de cliente e perfil (`/`), home (`/app/home`), busca e detalhe de estacionamentos (`/app/parking`), dashboard (`/admin/dashboard`) e configuração (`/admin/configuration`). Todas apresentam o bloco **“Variabilidade desta tela”** quando o modo acadêmico está ligado.
 
 ## 5. Módulo exclusivo do Hospital
 
-O módulo de Convênio Médico implementa um fluxo mockado completo:
+O módulo de Convênio Médico combina o CRUD de convênios com a validação de atendimentos gravados no banco:
 
 1. informar o atendimento (use `ATD-48291` na apresentação);
-2. localizar paciente e convênio;
-3. validar elegibilidade;
-4. apresentar desconto ou isenção;
-5. aplicar o benefício;
-6. emitir confirmação persistida.
+2. localizar paciente e convênio pela API;
+3. validar a elegibilidade com a classe `Atendimento` (convênio ativo, até 24 horas, benefício ainda não usado);
+4. apresentar o benefício descrito pela classe `Convenio` (isenção, desconto ou horas grátis);
+5. consumir o benefício no pagamento, onde `TarifaComConvenio` calcula o valor final.
 
 O item só aparece no menu quando `medicalAgreement=true` e o perfil possui permissão. Acesso direto por outro tenant mostra uma página de bloqueio. O módulo reutiliza `AdminLayout`, `Card`, `FormField`, `Button`, `Alert`, `StatusBadge`, tema e autorização comuns.
 
 ## 6. Reúso e modularização
 
 - `src/core`: contratos, catálogo de tenants, permissões, providers e gates.
-- `src/shared`: design system e layouts reutilizáveis.
-- `src/features`: módulos de seleção, estacionamento, veículos e administração.
-- `src/data`: mocks compartilhados entre as interfaces.
+- `src/domain`: classes de domínio e os padrões Strategy, Factory Method e Observer.
+- `src/services`: chamadas à API (`request()` e `createCrudApi()`).
+- `src/shared`: design system, layouts e componentes e hooks reutilizáveis dos CRUDs (`src/shared/crud`).
+- `src/features`: módulos de seleção, estacionamento, veículos, pessoas, tarifas e administração.
+- `src/data`: mocks restantes (estacionamentos da busca).
+- `server`: API Express, schema SQLite, seed e testes de API.
 
 Exemplos de reúso visível:
 
@@ -101,7 +104,7 @@ Exemplos de reúso visível:
 
 ## 7. Roteiro de apresentação
 
-O estado é armazenado na chave `smartpark:parte3:v1` do `localStorage`. A query string tem prioridade na abertura. Parâmetros suportados:
+Os dados dos CRUDs ficam no SQLite. O `localStorage` (chave `smartpark:parte3:v1`) guarda apenas o contexto da apresentação: cliente, perfil e modo acadêmico. A query string tem prioridade na abertura. Parâmetros suportados:
 
 - `tenant`: `shopping`, `condominium`, `hospital`, `company`;
 - `role`: `driver`, `resident`, `employee`, `visitor`, `operator`, `admin`, `valet`;
@@ -115,4 +118,4 @@ Sugestão de capturas:
 4. Empresa + Administrador: dashboard corporativo, acessos RFID e configuração.
 5. Hospital + Administrador: dashboard com convênios e módulo exclusivo.
 
-O ícone de engrenagem na barra acadêmica volta à seleção. O ícone de restauração repõe todos os mocks iniciais.
+O ícone de engrenagem na barra acadêmica volta à seleção. O ícone de restauração chama `POST /api/reset`, que recria os dados de demonstração no banco.
