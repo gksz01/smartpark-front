@@ -24,6 +24,18 @@ export async function updateSpace(tenantId: TenantId, id: string, space: SpaceIn
   return readResponse(response)
 }
 
+/** Resultado da simulação do sensor: a vaga atualizada e as notificações do Observer. */
+export interface SensorResult {
+  space: ParkingSpace
+  notifications: string[]
+}
+
+// OBSERVER — POST /api/spaces/:id/sensor?tenant=... (leitura simulada do sensor da vaga)
+export async function simulateSensor(tenantId: TenantId, id: string, reading: 'ocupada' | 'liberada'): Promise<SensorResult> {
+  const response = await fetch(`/api/spaces/${id}/sensor?tenant=${tenantId}`, { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ reading }) })
+  return readResponse(response)
+}
+
 // DELETE — DELETE /api/spaces/:id?tenant=...
 export async function deleteSpace(tenantId: TenantId, id: string): Promise<void> {
   const response = await fetch(`/api/spaces/${id}?tenant=${tenantId}`, { method: 'DELETE' })

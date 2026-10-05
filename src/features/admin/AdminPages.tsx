@@ -7,7 +7,7 @@ import type { AccessDirection, AccessRecord, AccessStatus, Agreement, Attendance
 import { Convenio } from '../../domain/Convenio'
 import { createAgreement, deleteAgreement, listAgreements, updateAgreement, validateAttendance } from '../../services/agreementsApi'
 import { createAccess, deleteAccess, listAccess, updateAccess } from '../../services/accessApi'
-import { createSpace, deleteSpace, listSpaces, updateSpace, type SpaceInput } from '../../services/spacesApi'
+import { createSpace, deleteSpace, listSpaces, simulateSensor, updateSpace, type SpaceInput } from '../../services/spacesApi'
 import { Alert, Button, Card, ConfirmDialog, DataTable, FormField, PageHeader, StatCard, StatusBadge, VariationInfo, type Column } from '../../shared/ui'
 
 const METRIC_ICONS: Record<DashboardMetricId, typeof Activity> = {
@@ -119,6 +119,19 @@ export function SpacesPage() {
     }
   }
 
+  // OBSERVER: o sensor lê "ocupada" numa vaga livre/reservada e "liberada" numa vaga ocupada
+  const runSensor = async (space: ParkingSpace) => {
+    setMessage('')
+    setError('')
+    try {
+      const result = await simulateSensor(tenant.id, space.id, space.status === 'Ocupada' ? 'liberada' : 'ocupada')
+      setSpaces((current) => current.map((item) => item.id === result.space.id ? result.space : item))
+      setMessage(result.notifications.join(' ') || `Vaga ${result.space.code}: ${result.space.status}.`)
+    } catch (failure) {
+      setError((failure as Error).message)
+    }
+  }
+
   const columns: Column<ParkingSpace>[] = [
     { header: 'Vaga', render: (row) => <strong>{row.code}</strong> },
     { header: 'Setor', render: (row) => `Setor ${row.sector}` },
@@ -128,6 +141,7 @@ export function SpacesPage() {
       header: 'Ações',
       render: (row) => (
         <div className="flex gap-2">
+          {row.status !== 'Bloqueada' && <Button variant="secondary" onClick={() => runSensor(row)} aria-label={`Simular sensor na vaga ${row.code}`}><Activity size={16} /> Simular sensor</Button>}
           <Button variant="secondary" onClick={() => openEdit(row)} aria-label={`Editar vaga ${row.code}`}><Edit3 size={16} /> Editar</Button>
           <Button variant="ghost" onClick={() => setDeleteId(row.id)} aria-label={`Excluir vaga ${row.code}`}><Trash2 size={16} /> Excluir</Button>
         </div>
@@ -145,7 +159,8 @@ export function SpacesPage() {
       />
       <VariationInfo>
         A mesma tabela representa todos os clientes. Os tipos oferecidos vêm de `spaceTypes` (Prioritária no Hospital, Nominal no Condomínio,
-        Restrita na Empresa) e cada tipo é criado pelo seu Creator do Factory Method.
+        Restrita na Empresa) e cada tipo é criado pelo seu Creator do Factory Method. &quot;Simular sensor&quot; usa o Observer: o Sensor avisa
+        ObservadorVagaSensor (muda a vaga) e ObservadorNotificacaoSensor (gera a notificação).
       </VariationInfo>
       {message && <Alert>{message}</Alert>}
       {error && !formOpen && <Alert tone="danger">{error}</Alert>}

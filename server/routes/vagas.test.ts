@@ -5,6 +5,10 @@ import { join } from 'node:path'
 import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CRIADOR_POR_TIPO } from '../../src/domain/factories/vaga/criadorPorTipo'
+import { VARIANTE_POR_TENANT } from '../../src/domain/factories/variante/variantePorTenant'
+import { ObservadorNotificacaoSensor } from '../../src/domain/observer/sensor/ObservadorNotificacaoSensor'
+import { ObservadorVagaSensor } from '../../src/domain/observer/sensor/ObservadorVagaSensor'
+import { Sensor } from '../../src/domain/Sensor'
 import { criarApp } from '../app'
 import { abrirBanco, type Banco } from '../database/conexao'
 import { popularBanco } from '../seed/seed'
@@ -173,5 +177,71 @@ describe('API de vagas — regra de exclusão', () => {
     await request(app).delete(`/api/spaces/${idDa('A-01', 'shopping')}?tenant=shopping`)
     await request(app).post('/api/reset')
     expect(linhaDoBanco('A-01', 'shopping')).toMatchObject({ id: 1, tipo: 'Comum' })
+  })
+})
+
+describe('API de vagas — Observer do sensor (POST /:id/sensor)', () => {
+  const sensor = (codigo: string, reading: unknown, tenant = 'shopping') =>
+    request(app).post(`/api/spaces/${idDa(codigo, tenant)}/sensor?tenant=${tenant}`).send({ reading })
+  const statusDa = (codigo: string, tenant = 'shopping') => linhaDoBanco(codigo, tenant)?.status
+
+  it('ocupação: a vaga Livre fica Ocupada no banco e a notificação é gerada', async () => {
+    const resposta = await sensor('A-01', 'ocupada')
+    expect(resposta.status).toBe(200)
+    expect(resposta.body.space).toMatchObject({ code: 'A-01', status: 'Ocupada' })
+    expect(resposta.body.notifications).toEqual([expect.stringMatching(/^\[\d{2}:\d{2}\] Vaga ocupada: O sensor SN-A-01 detectou um veículo na vaga A-01\.$/)])
+    expect(statusDa('A-01')).toBe('Ocupada')
+  })
+
+  it('liberação: a vaga Ocupada volta para Livre no banco', async () => {
+    const resposta = await sensor('A-02', 'liberada')
+    expect(resposta.status).toBe(200)
+    expect(resposta.body.notifications).toEqual([expect.stringContaining('Vaga liberada: A vaga A-02 está livre novamente.')])
+    expect(statusDa('A-02')).toBe('Livre')
+  })
+
+  it('uma vaga Reservada pode ser ocupada (o veículo da reserva chegou)', async () => {
+    expect((await sensor('A-03', 'ocupada')).status).toBe(200)
+    expect(statusDa('A-03')).toBe('Ocupada')
+  })
+
+  it('o Sensor notifica os dois observadores já existentes', async () => {
+    const detectar = vi.spyOn(Sensor.prototype, 'detectarOcupacao')
+    const observadorVaga = vi.spyOn(ObservadorVagaSensor.prototype, 'atualizar')
+    const observadorNotificacao = vi.spyOn(ObservadorNotificacaoSensor.prototype, 'atualizar')
+    await sensor('B-11', 'ocupada')
+    expect(detectar).toHaveBeenCalledTimes(1)
+    expect(observadorVaga).toHaveBeenCalledWith(expect.objectContaining({ tipo: 'ocupada', codigoSensor: 'SN-B-11', vagaId: 'B-11' }))
+    expect(observadorNotificacao).toHaveBeenCalledTimes(1)
+  })
+
+  it('a regra da Vaga barra a ocupação de vaga Bloqueada (nada é gravado)', async () => {
+    const resposta = await sensor('A-04', 'ocupada')
+    expect(resposta.status).toBe(409)
+    expect(resposta.body.erro).toBe('A vaga A-04 não pode ser ocupada (status: Bloqueada).')
+    expect(statusDa('A-04')).toBe('Bloqueada')
+  })
+
+  it('leitura repetida não muda nada (o sensor só notifica quando o estado muda)', async () => {
+    const observadorVaga = vi.spyOn(ObservadorVagaSensor.prototype, 'atualizar')
+    const resposta = await sensor('A-02', 'ocupada') // A-02 já está Ocupada
+    expect(resposta.status).toBe(409)
+    expect(resposta.body.erro).toBe('O sensor já indica a vaga A-02 como ocupada.')
+    expect(observadorVaga).not.toHaveBeenCalled()
+  })
+
+  it('com notifications desligada, a vaga muda mas não há notificação', async () => {
+    vi.spyOn(VARIANTE_POR_TENANT.shopping, 'possuiFeature').mockImplementation((feature) => feature !== 'notifications')
+    const resposta = await sensor('A-01', 'ocupada')
+    expect(resposta.body.notifications).toEqual([])
+    expect(statusDa('A-01')).toBe('Ocupada')
+  })
+
+  it('valida a leitura, o tenant e a vaga de outro tenant', async () => {
+    expect((await sensor('A-01', 'talvez')).body.erro).toBe('Informe a leitura do sensor: ocupada ou liberada.')
+    expect((await request(app).post(`/api/spaces/${idDa('A-01', 'shopping')}/sensor`).send({ reading: 'ocupada' })).status).toBe(400)
+    const outroTenant = await request(app).post(`/api/spaces/${idDa('A-01', 'shopping')}/sensor?tenant=hospital`).send({ reading: 'ocupada' })
+    expect(outroTenant.status).toBe(404)
+    expect(statusDa('A-01')).toBe('Livre')
   })
 })

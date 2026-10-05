@@ -14,7 +14,10 @@ const INITIAL: Record<TenantId, ParkingSpace[]> = {
     { id: '3', code: 'B-13', sector: 'B', type: 'Elétrico', status: 'Livre', requirement: 'Exclusiva para veículos elétricos em recarga' },
   ],
   condominium: [{ id: '4', code: 'T1-101', sector: 'Torre 1', type: 'Nominal', status: 'Ocupada', requirement: 'Exclusiva do morador da unidade vinculada' }],
-  hospital: [{ id: '5', code: 'P-01', sector: 'Pronto-socorro', type: 'Prioritária', status: 'Livre', requirement: 'Exclusiva para pacientes e acompanhantes' }],
+  hospital: [
+    { id: '5', code: 'P-01', sector: 'Pronto-socorro', type: 'Prioritária', status: 'Livre', requirement: 'Exclusiva para pacientes e acompanhantes' },
+    { id: '7', code: 'C-11', sector: 'Consultórios', type: 'Comum', status: 'Bloqueada', requirement: 'Livre para qualquer veículo' },
+  ],
   company: [{ id: '6', code: 'D-01', sector: 'Diretoria', type: 'Restrito', status: 'Ocupada', requirement: 'Exclusiva para credenciais autorizadas' }],
 }
 
@@ -38,6 +41,15 @@ export const updateSpace = vi.fn(async (tenantId: TenantId, id: string, input: S
   const updated = { ...input, id, requirement: `Requisito da vaga ${input.type}` }
   spaces[tenantId] = spaces[tenantId].map((space) => space.id === id ? updated : space)
   return updated
+})
+
+export const simulateSensor = vi.fn(async (tenantId: TenantId, id: string, reading: 'ocupada' | 'liberada') => {
+  const space = { ...spaces[tenantId].find((item) => item.id === id)!, status: reading === 'ocupada' ? 'Ocupada' as const : 'Livre' as const }
+  spaces[tenantId] = spaces[tenantId].map((item) => item.id === id ? space : item)
+  const notification = reading === 'ocupada'
+    ? `[14:32] Vaga ocupada: O sensor SN-${space.code} detectou um veículo na vaga ${space.code}.`
+    : `[14:32] Vaga liberada: A vaga ${space.code} está livre novamente.`
+  return { space, notifications: [notification] }
 })
 
 export const deleteSpace = vi.fn(async (tenantId: TenantId, id: string) => {

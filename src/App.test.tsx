@@ -8,7 +8,7 @@ import { createAccess, deleteAccess, listAccess, updateAccess } from './test/fak
 import { createAgreement, deleteAgreement, listAgreements, updateAgreement, validateAttendance } from './test/fakeAgreementsApi'
 import { createPayment, deletePayment, listPayments, refundPayment } from './test/fakePaymentsApi'
 import { cancelReservation, createReservation, deleteReservation, listReservations, updateReservation } from './test/fakeReservationsApi'
-import { createSpace, deleteSpace, listSpaces, updateSpace } from './test/fakeSpacesApi'
+import { createSpace, deleteSpace, listSpaces, simulateSensor, updateSpace } from './test/fakeSpacesApi'
 import { createTariff, deleteTariff, listTariffs, updateTariff } from './test/fakeTariffsApi'
 import { createUser, deleteUser, listUsers, updateUser } from './test/fakeUsersApi'
 import { createVehicle, deleteVehicle, listVehicles, updateVehicle } from './test/fakeVehiclesApi'
@@ -932,5 +932,42 @@ describe('pagamentos', () => {
     renderRoute('/app/home?tenant=company&role=employee')
     expect(screen.queryByRole('link', { name: /Pagar/ })).not.toBeInTheDocument()
     expect(listPayments).not.toHaveBeenCalled()
+  })
+})
+
+describe('vagas — Observer do sensor', () => {
+  const linhaDa = (codigo: string) => within(screen.getByRole('table')).getByText(codigo).closest('tr') as HTMLElement
+
+  it('simular o sensor numa vaga livre: a vaga fica Ocupada e a notificação aparece', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/spaces?tenant=shopping&role=admin')
+    await user.click(await screen.findByRole('button', { name: 'Simular sensor na vaga A-01' }))
+    expect(await screen.findByText('[14:32] Vaga ocupada: O sensor SN-A-01 detectou um veículo na vaga A-01.')).toBeInTheDocument()
+    expect(within(linhaDa('A-01')).getByText('Ocupada')).toBeInTheDocument()
+    expect(simulateSensor).toHaveBeenCalledWith('shopping', '1', 'ocupada')
+  })
+
+  it('numa vaga ocupada, o sensor envia a leitura de liberação', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/spaces?tenant=shopping&role=admin')
+    await user.click(await screen.findByRole('button', { name: 'Simular sensor na vaga A-02' }))
+    expect(await screen.findByText('[14:32] Vaga liberada: A vaga A-02 está livre novamente.')).toBeInTheDocument()
+    expect(within(linhaDa('A-02')).getByText('Livre')).toBeInTheDocument()
+    expect(simulateSensor).toHaveBeenCalledWith('shopping', '2', 'liberada')
+  })
+
+  it('vaga bloqueada não oferece a simulação', async () => {
+    renderRoute('/admin/spaces?tenant=hospital&role=admin')
+    expect(await screen.findByRole('button', { name: 'Simular sensor na vaga P-01' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Simular sensor na vaga C-11' })).not.toBeInTheDocument()
+  })
+
+  it('mostra o erro devolvido pela API', async () => {
+    simulateSensor.mockRejectedValueOnce(new Error('A vaga A-01 foi alterada por outra operação. Tente novamente.'))
+    const user = userEvent.setup()
+    renderRoute('/admin/spaces?tenant=shopping&role=admin')
+    await user.click(await screen.findByRole('button', { name: 'Simular sensor na vaga A-01' }))
+    expect(await screen.findByText(/foi alterada por outra operação/)).toBeInTheDocument()
+    expect(within(linhaDa('A-01')).getByText('Livre')).toBeInTheDocument()
   })
 })

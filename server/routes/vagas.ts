@@ -2,6 +2,10 @@ import { Router, type Request, type Response } from 'express'
 import { isTenantId, SPACE_STATUSES, TENANTS } from '../../src/core/config'
 import type { SpaceStatus, SpaceType, TenantId } from '../../src/core/types'
 import { CRIADOR_POR_TIPO } from '../../src/domain/factories/vaga/criadorPorTipo'
+import { VARIANTE_POR_TENANT } from '../../src/domain/factories/variante/variantePorTenant'
+import type { Notificacao } from '../../src/domain/Notificacao'
+import { registrarObservadoresSensor } from '../../src/domain/observer/registrarObservadores'
+import { Sensor } from '../../src/domain/Sensor'
 import type { Vaga } from '../../src/domain/Vaga'
 import type { Banco } from '../database/conexao'
 
@@ -166,6 +170,53 @@ export function criarRotasVagas(db: Banco): Router {
       return
     }
     res.status(204).end()
+  })
+
+  /*
+   * OBSERVER — Exemplo 1 no sistema real: simulação de leitura do sensor da vaga.
+   * Sensor (Subject) → ObservadorVagaSensor muda a Vaga → ObservadorNotificacaoSensor cria a
+   * Notificacao → a API grava o novo status no SQLite (o Observer só trabalha em memória).
+   */
+  rotas.post('/:id/sensor', (req, res) => {
+    const tenant = lerTenant(req, res)
+    if (!tenant) return
+    const leitura = req.body?.reading
+    if (leitura !== 'ocupada' && leitura !== 'liberada') {
+      res.status(400).json({ erro: 'Informe a leitura do sensor: ocupada ou liberada.' })
+      return
+    }
+    const linha = db.prepare('SELECT * FROM vagas WHERE id = ? AND tenant_id = ?').get(req.params.id, tenant) as LinhaVaga | undefined
+    if (!linha) {
+      res.status(404).json({ erro: 'Vaga não encontrada.' })
+      return
+    }
+
+    const vaga = paraVaga(linha)
+    // Não há tabela de sensores: o sensor da vaga começa com o estado que está gravado no banco
+    const sensor = new Sensor(`sensor-${vaga.id}`, `SN-${vaga.codigo}`, vaga.codigo)
+    sensor.ocupado = vaga.status === 'Ocupada'
+    const notificacoes: Notificacao[] = []
+    registrarObservadoresSensor(sensor, vaga, VARIANTE_POR_TENANT[tenant], notificacoes)
+
+    try {
+      const mudou = leitura === 'ocupada' ? sensor.detectarOcupacao() : sensor.detectarLiberacao()
+      if (!mudou) {
+        res.status(409).json({ erro: `O sensor já indica a vaga ${vaga.codigo} como ${leitura === 'ocupada' ? 'ocupada' : 'livre'}.` })
+        return
+      }
+    } catch (falha) {
+      // Regra da Vaga recusada pelo observador (ex.: vaga Bloqueada não pode ser ocupada)
+      res.status(409).json({ erro: (falha as Error).message })
+      return
+    }
+
+    const resultado = db.prepare('UPDATE vagas SET status = ? WHERE id = ? AND tenant_id = ? AND status = ?').run(vaga.status, linha.id, tenant, linha.status)
+    if (resultado.changes !== 1) {
+      res.status(409).json({ erro: `A vaga ${vaga.codigo} foi alterada por outra operação. Tente novamente.` })
+      return
+    }
+    const atualizada = db.prepare('SELECT * FROM vagas WHERE id = ?').get(linha.id) as LinhaVaga
+    res.json({ space: paraJson(paraVaga(atualizada)), notifications: notificacoes.map((item) => item.formatar()) })
   })
 
   return rotas
