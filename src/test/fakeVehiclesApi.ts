@@ -10,7 +10,7 @@ import type { VehicleInput } from '../services/vehiclesApi'
 const INITIAL: Record<TenantId, Vehicle[]> = {
   shopping: [{ id: '1', nickname: 'Meu carro', plate: 'SPK1A23', model: 'Honda City', color: 'Cinza', unit: '', rfidTag: '' }],
   condominium: [{ id: '2', nickname: 'Meu carro', plate: 'SPK1A23', model: 'Honda City', color: 'Cinza', unit: 'Torre B · 804', rfidTag: '' }],
-  hospital: [],
+  hospital: [{ id: '4', nickname: 'Meu carro', plate: 'HSP2C34', model: 'Toyota Corolla', color: 'Preto', unit: '', rfidTag: '' }],
   company: [{ id: '3', nickname: 'Carro da equipe', plate: 'NXR5D67', model: 'Chevrolet Onix', color: 'Branco', unit: '', rfidTag: 'NX-71520' }],
 }
 

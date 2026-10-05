@@ -6,7 +6,7 @@ import { Convenio } from '../../src/domain/Convenio'
 import type { Banco } from '../database/conexao'
 
 /** Linha da tabela convenios (com a contagem de atendimentos vinculados). */
-interface LinhaConvenio {
+export interface LinhaConvenio {
   id: number
   tenant_id: string
   nome: string
@@ -17,7 +17,7 @@ interface LinhaConvenio {
 }
 
 /** Linha da tabela atendimentos. */
-interface LinhaAtendimento {
+export interface LinhaAtendimento {
   id: number
   tenant_id: string
   convenio_id: number
@@ -33,12 +33,12 @@ const SELECT_CONVENIO = `
 `
 
 /** Linha do banco → objeto Convenio do domínio. */
-function paraConvenio(linha: LinhaConvenio): Convenio {
+export function paraConvenio(linha: LinhaConvenio): Convenio {
   return new Convenio(String(linha.id), linha.nome, linha.tipo_beneficio, linha.valor_beneficio, linha.ativo === 1)
 }
 
 /** Linha do banco → objeto Atendimento do domínio, com o estado do benefício já gravado. */
-function paraAtendimento(linha: LinhaAtendimento, convenio: Convenio): Atendimento {
+export function paraAtendimento(linha: LinhaAtendimento, convenio: Convenio): Atendimento {
   const atendimento = new Atendimento(String(linha.id), linha.numero, linha.paciente, convenio, new Date(linha.data_atendimento))
   atendimento.beneficioAplicado = linha.beneficio_aplicado === 1
   return atendimento

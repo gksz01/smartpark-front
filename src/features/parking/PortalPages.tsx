@@ -1,14 +1,21 @@
-import { ArrowLeft, ArrowRight, CalendarDays, Car, Check, Clock3, CreditCard, Edit3, KeyRound, MapPin, Navigation, QrCode, Search, ShieldCheck, Sparkles, TicketCheck, Trash2, UserRoundCheck, WalletCards, X, XCircle, Zap } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CalendarDays, Car, Check, Clock3, CreditCard, Edit3, KeyRound, MapPin, Navigation, QrCode, RotateCcw, Search, ShieldCheck, Sparkles, TicketCheck, Trash2, UserRoundCheck, WalletCards, X, XCircle, Zap } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTenant } from '../../core/app-context'
-import { ACCESS_LABELS, RESERVATION_STATUS_LABELS } from '../../core/config'
-import type { Parking, ParkingSpace, Payment, Reservation, Tariff, TenantId } from '../../core/types'
+import { ACCESS_LABELS, PAYMENT_METHODS, PAYMENT_STATUS_LABELS, RESERVATION_STATUS_LABELS } from '../../core/config'
+import { FeatureGate } from '../../core/gates'
+import type { Agreement, AttendanceCheck, Parking, ParkingSpace, Payment, PaymentMethod, Reservation, Tariff, TenantId } from '../../core/types'
+import { Convenio } from '../../domain/Convenio'
+import { CRIAR_ESTRATEGIA_PAGAMENTO } from '../../domain/strategies/pagamento/estrategiaPorForma'
+import { PagamentoCredito } from '../../domain/strategies/pagamento/PagamentoCredito'
+import { TarifaComConvenio } from '../../domain/strategies/tarifa/TarifaComConvenio'
 import { PARKINGS } from '../../data/mocks'
 import { Reserva } from '../../domain/Reserva'
 import { CRIAR_ESTRATEGIA } from '../../domain/strategies/tarifa/estrategiaPorTipo'
 import { Tarifa } from '../../domain/Tarifa'
 import { cancelReservation, createReservation, deleteReservation, listReservations, updateReservation } from '../../services/reservationsApi'
+import { listAgreements, validateAttendance } from '../../services/agreementsApi'
+import { createPayment, deletePayment, listPayments, refundPayment } from '../../services/paymentsApi'
 import { listSpaces } from '../../services/spacesApi'
 import { listTariffs } from '../../services/tariffsApi'
 import { Alert, Button, Card, ConfirmDialog, DataTable, EmptyState, FormField, OccupancyBar, PageHeader, StatusBadge, VariationInfo, type Column } from '../../shared/ui'
@@ -344,14 +351,260 @@ export function ReservationPage() {
   )
 }
 
+const PAYMENT_DURATIONS = [1, 2, 3, 4, 8]
+const PAYMENT_TONE = { pendente: 'warning', aprovado: 'success', estornado: 'neutral' } as const
+const INSTALLMENT_OPTIONS = Array.from({ length: PagamentoCredito.MAXIMO_PARCELAS }, (_, index) => index + 1)
+const money = (value: number) => `R$ ${value.toFixed(2).replace('.', ',')}`
+
+/**
+ * Prévia pelo mesmo caminho da API: Tarifa (Strategy) → [TarifaComConvenio] → Strategy de pagamento.
+ * É só uma prévia: a API recalcula tudo antes de gravar.
+ */
+function previewPayment(tarifa: Tarifa | null, convenio: Convenio | null, duration: number, method: PaymentMethod, installments: number) {
+  if (!tarifa) return null
+  const tarifaAPagar = convenio ? new Tarifa(tarifa.id, tarifa.nome, new TarifaComConvenio(tarifa.estrategia, convenio)) : tarifa
+  const amount = tarifaAPagar.calcular(duration)
+  const resultado = CRIAR_ESTRATEGIA_PAGAMENTO[method](installments).processar(amount)
+  return { tariffAmount: tarifa.calcular(duration), amount, charged: resultado.valorCobrado, detail: resultado.detalhe }
+}
+
+/** Histórico, tarifa ativa e (com medicalAgreement) convênios do tenant. */
+async function loadPaymentData(tenantId: TenantId, withAgreements: boolean) {
+  const [payments, tariffs, agreements] = await Promise.all([
+    listPayments(tenantId),
+    listTariffs(tenantId).catch(() => [] as Tariff[]),
+    withAgreements ? listAgreements(tenantId).catch(() => [] as Agreement[]) : Promise.resolve([] as Agreement[]),
+  ])
+  return { payments, tarifa: activeTarifa(tariffs), agreements }
+}
+
 export function PaymentsPage() {
-  const { state, tenant, addPayment } = useTenant()
-  const [method, setMethod] = useState('Pix')
+  const { state, tenant, dataVersion } = useTenant()
+  const withAgreements = tenant.features.medicalAgreement
+  const [payments, setPayments] = useState<Payment[]>([])
+  const [tarifa, setTarifa] = useState<Tarifa | null>(null)
+  const [agreements, setAgreements] = useState<Agreement[]>([])
+  const [form, setForm] = useState({ vehicleId: '', duration: '2', method: 'Pix' as PaymentMethod, installments: '1', attendanceNumber: '' })
+  const [check, setCheck] = useState<AttendanceCheck | null>(null)
   const [receipt, setReceipt] = useState<Payment | null>(null)
-  const amount = 28
-  const pay = () => { const next: Payment = { id: crypto.randomUUID(), vehicleId: state.vehicles[0]?.id ?? '', period: 'Hoje · 13:42 — 16:02', amount, method, createdAt: new Date().toISOString(), receipt: `SPK-${Math.floor(100000 + Math.random() * 900000)}` }; addPayment(next); setReceipt(next) }
-  return <div className="portal-content page-top narrow-page"><PageHeader eyebrow="Pagamento mockado" title="Finalizar estacionamento" description="Nenhum valor real será cobrado nesta demonstração." />
-    <VariationInfo>Pagamento e cobrança são gates separados e ambos protegem esta rota. O comprovante reutiliza veículo e período do núcleo, sem gateway externo.</VariationInfo>
-    {receipt ? <Card className="success-panel"><span><Check size={30} /></span><p className="eyebrow">Pagamento aprovado</p><h2>R$ {receipt.amount.toFixed(2).replace('.', ',')}</h2><p>{receipt.period}</p><div className="receipt-lines"><span>Veículo <strong>{state.vehicles[0]?.plate}</strong></span><span>Forma <strong>{receipt.method}</strong></span><span>Comprovante <strong>{receipt.receipt}</strong></span><span>Cliente <strong>{tenant.shortName}</strong></span></div><Button onClick={() => setReceipt(null)} variant="secondary">Novo pagamento</Button></Card> : <Card className="payment-panel"><div className="payment-summary"><span><WalletCards size={22} /></span><div><p>Valor total</p><strong>R$ 28,00</strong></div></div><div className="receipt-lines"><span>Período <strong>Hoje · 13:42 — 16:02</strong></span><span>Veículo <strong>{state.vehicles[0]?.plate ?? 'Não cadastrado'}</strong></span><span>Duração <strong>2h20min</strong></span></div><h3>Forma de pagamento</h3><div className="payment-methods">{['Pix', 'Crédito', 'Débito'].map((item) => <button key={item} className={method === item ? 'active' : ''} onClick={() => setMethod(item)}><span>{item === 'Pix' ? <Sparkles /> : <CreditCard />}</span>{item}{method === item && <Check size={15} />}</button>)}</div><Button className="w-full justify-center" onClick={pay}>Pagar R$ 28,00 <ArrowRight size={17} /></Button></Card>}
-  </div>
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+
+  const vehicleId = form.vehicleId || state.vehicles[0]?.id || ''
+  const installments = form.method === 'Crédito' ? Number(form.installments) : 1
+  // Convênio da prévia: só depois de verificar um atendimento elegível
+  const agreement = check?.eligible ? agreements.find((item) => item.name === check.agreement) : undefined
+  const convenio = agreement ? new Convenio(agreement.id, agreement.name, agreement.benefitType, agreement.benefitValue, agreement.active) : null
+  const preview = previewPayment(tarifa, convenio, Number(form.duration), form.method, installments)
+
+  // READ: histórico e tarifa ativa (e de novo após "Restaurar dados")
+  useEffect(() => {
+    let current = true
+    loadPaymentData(tenant.id, withAgreements)
+      .then((data) => {
+        if (!current) return
+        setPayments(data.payments)
+        setTarifa(data.tarifa)
+        setAgreements(data.agreements)
+        setError('')
+      })
+      .catch((failure: Error) => {
+        if (!current) return
+        setPayments([])
+        setError(`Não foi possível carregar os pagamentos: ${failure.message}`)
+      })
+    return () => { current = false }
+  }, [tenant.id, withAgreements, dataVersion])
+
+  const reload = async () => {
+    const data = await loadPaymentData(tenant.id, withAgreements)
+    setPayments(data.payments)
+    setTarifa(data.tarifa)
+    setAgreements(data.agreements)
+  }
+
+  // Verificar atendimento (Hospital): a API usa Atendimento.validarElegibilidade(), sem consumir o benefício
+  const verify = async () => {
+    setError('')
+    try {
+      setCheck(await validateAttendance(tenant.id, form.attendanceNumber))
+    } catch (failure) {
+      setCheck(null)
+      setError((failure as Error).message)
+    }
+  }
+
+  // CREATE: a API recalcula tudo, processa pela Strategy e consome o benefício na mesma transação
+  const pay = async () => {
+    setMessage('')
+    setError('')
+    try {
+      const created = await createPayment(tenant.id, {
+        vehicleId,
+        duration: Number(form.duration),
+        method: form.method,
+        installments,
+        attendanceNumber: withAgreements && form.attendanceNumber ? form.attendanceNumber : undefined,
+      })
+      setReceipt(created)
+      setForm({ ...form, attendanceNumber: '' })
+      setCheck(null)
+      await reload()
+    } catch (failure) {
+      setError((failure as Error).message)
+    }
+  }
+
+  // UPDATE: estorno pelo domínio (pagamento.estornar())
+  const refund = async (payment: Payment) => {
+    setMessage('')
+    setError('')
+    try {
+      await refundPayment(tenant.id, payment.id)
+      setMessage(`Pagamento ${payment.receipt} estornado.`)
+      await reload()
+    } catch (failure) {
+      setError((failure as Error).message)
+    }
+  }
+
+  // DELETE: a API só aceita pagamentos estornados
+  const confirmDelete = async (id: string) => {
+    setDeleteId(null)
+    setMessage('')
+    try {
+      await deletePayment(tenant.id, id)
+      setPayments((current) => current.filter((payment) => payment.id !== id))
+      setMessage('Pagamento excluído.')
+    } catch (failure) {
+      setError((failure as Error).message)
+    }
+  }
+
+  const columns: Column<Payment>[] = [
+    { header: 'Comprovante', render: (row) => <div><strong>{row.receipt}</strong><small className="table-subtitle">{new Date(row.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</small></div> },
+    { header: 'Veículo', render: (row) => <div>{row.vehicleLabel}<small className="table-subtitle">{row.duration}h</small></div> },
+    { header: 'Valor', render: (row) => <div>{money(row.amount)}{row.tariffAmount !== row.amount && <small className="table-subtitle">tarifa {money(row.tariffAmount)}</small>}</div> },
+    { header: 'Cobrado', render: (row) => <strong>{money(row.chargedAmount)}</strong> },
+    { header: 'Forma', render: (row) => row.installments > 1 ? `${row.method} · ${row.installments}x` : row.method },
+    { header: 'Convênio', render: (row) => row.attendanceNumber ? <div>{row.agreementName}<small className="table-subtitle">{row.attendanceNumber}</small></div> : '—' },
+    { header: 'Status', render: (row) => <StatusBadge tone={PAYMENT_TONE[row.status]}>{PAYMENT_STATUS_LABELS[row.status]}</StatusBadge> },
+    {
+      header: 'Ações',
+      render: (row) => (
+        <div className="flex gap-2">
+          {row.status === 'aprovado' && <Button variant="secondary" onClick={() => refund(row)} aria-label={`Estornar ${row.receipt}`}><RotateCcw size={16} /> Estornar</Button>}
+          <Button variant="ghost" onClick={() => setDeleteId(row.id)} aria-label={`Excluir ${row.receipt}`}><Trash2 size={16} /> Excluir</Button>
+        </div>
+      ),
+    },
+  ]
+
+  return (
+    <div className="portal-content page-top narrow-page">
+      <PageHeader eyebrow="Pagamento simulado" title="Finalizar estacionamento" description="Nenhum valor real será cobrado nesta demonstração." />
+      <VariationInfo>
+        Esta rota existe só com cobrança (`billing`). O valor vem da tarifa ativa (Strategy) e o processamento da Strategy de pagamento
+        (Pix, Crédito ou Débito). Com `medicalAgreement` (Hospital), o Nº do atendimento aplica TarifaComConvenio e consome o benefício.
+      </VariationInfo>
+      {message && <Alert>{message}</Alert>}
+      {error && <Alert tone="danger">{error}</Alert>}
+
+      {receipt ? (
+        <Card className="success-panel">
+          <span><Check size={30} /></span>
+          <p className="eyebrow">Pagamento aprovado</p>
+          <h2>{money(receipt.chargedAmount)}</h2>
+          <p>{receipt.detail}</p>
+          <div className="receipt-lines">
+            <span>Veículo <strong>{receipt.vehicleLabel}</strong></span>
+            <span>Valor da tarifa <strong>{money(receipt.tariffAmount)}</strong></span>
+            {receipt.attendanceNumber && <span>Convênio <strong>{receipt.agreementName} · {receipt.attendanceNumber}</strong></span>}
+            <span>Forma <strong>{receipt.installments > 1 ? `${receipt.method} · ${receipt.installments}x` : receipt.method}</strong></span>
+            <span>Comprovante <strong>{receipt.receipt}</strong></span>
+            <span>Cliente <strong>{tenant.shortName}</strong></span>
+          </div>
+          <Button onClick={() => setReceipt(null)} variant="secondary">Novo pagamento</Button>
+        </Card>
+      ) : (
+        <Card className="payment-panel">
+          <div className="payment-summary">
+            <span><WalletCards size={22} /></span>
+            <div><p>Valor total</p><strong>{preview ? money(preview.charged) : 'Sem tarifa ativa'}</strong></div>
+          </div>
+          <div className="form-grid">
+            <FormField label="Veículo">
+              <select value={vehicleId} onChange={(event) => setForm({ ...form, vehicleId: event.target.value })}>
+                {state.vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.nickname} · {vehicle.plate}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Duração">
+              <select value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })}>
+                {PAYMENT_DURATIONS.map((hours) => <option key={hours} value={hours}>{hours} {hours === 1 ? 'hora' : 'horas'}</option>)}
+              </select>
+            </FormField>
+          </div>
+          <FeatureGate feature="medicalAgreement">
+            <div className="mt-4 space-y-2">
+              <FormField label="Nº do atendimento" hint="Opcional. Com convênio elegível, o benefício é aplicado e consumido neste pagamento.">
+                <input value={form.attendanceNumber} onChange={(event) => { setForm({ ...form, attendanceNumber: event.target.value }); setCheck(null) }} placeholder="Ex.: ATD-48291" />
+              </FormField>
+              <Button type="button" variant="secondary" onClick={verify} disabled={!form.attendanceNumber.trim()}>Verificar atendimento</Button>
+              {check && (check.eligible
+                ? <Alert><strong>{check.agreement}</strong> · {check.benefit} para {check.patient}.</Alert>
+                : <Alert tone="danger">{check.reason}</Alert>)}
+            </div>
+          </FeatureGate>
+          <div className="receipt-lines">
+            <span>Tarifa <strong>{tarifa ? tarifa.nome : 'Sem tarifa ativa'}</strong></span>
+            {preview && <span>Valor da tarifa <strong>{money(preview.tariffAmount)}</strong></span>}
+            {convenio && <span>Convênio <strong>{convenio.nome} · {convenio.descricaoBeneficio()}</strong></span>}
+            {preview && <span>Valor a pagar <strong>{money(preview.amount)}</strong></span>}
+            {preview && preview.charged !== preview.amount && <span>Com taxa do parcelamento <strong>{money(preview.charged)}</strong></span>}
+          </div>
+          <h3>Forma de pagamento</h3>
+          <div className="payment-methods">
+            {PAYMENT_METHODS.map((item) => (
+              <button key={item} className={form.method === item ? 'active' : ''} onClick={() => setForm({ ...form, method: item })}>
+                <span>{item === 'Pix' ? <Sparkles /> : <CreditCard />}</span>{item}{form.method === item && <Check size={15} />}
+              </button>
+            ))}
+          </div>
+          {form.method === 'Crédito' && (
+            <FormField label="Parcelas">
+              <select value={form.installments} onChange={(event) => setForm({ ...form, installments: event.target.value })}>
+                {INSTALLMENT_OPTIONS.map((count) => <option key={count} value={count}>{count}x</option>)}
+              </select>
+            </FormField>
+          )}
+          {preview && <p className="mt-3 text-sm text-slate-500">{preview.detail}</p>}
+          <Button className="mt-5 w-full justify-center" onClick={pay} disabled={!preview || !vehicleId}>
+            Pagar {preview ? money(preview.charged) : ''} <ArrowRight size={17} />
+          </Button>
+        </Card>
+      )}
+
+      <section className="content-section">
+        <Card>
+          <div className="table-toolbar">
+            <div>
+              <h2>Histórico de pagamentos</h2>
+              <p>{payments.length} pagamentos · estorne antes de excluir</p>
+            </div>
+          </div>
+          <DataTable rows={payments} columns={columns} emptyMessage="Nenhum pagamento registrado." />
+        </Card>
+      </section>
+
+      {deleteId && (
+        <ConfirmDialog
+          title="Excluir pagamento?"
+          description="Somente pagamentos estornados podem ser excluídos."
+          onCancel={() => setDeleteId(null)}
+          onConfirm={() => confirmDelete(deleteId)}
+        />
+      )}
+    </div>
+  )
 }

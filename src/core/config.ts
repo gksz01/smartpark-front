@@ -1,4 +1,4 @@
-import type { AccessDirection, AccessMethod, AccessStatus, BenefitType, DashboardMetricId, Feature, Permission, PersonType, ReservationStatus, Role, SpaceStatus, TariffStrategyType, TenantConfig, TenantId } from './types'
+import type { AccessDirection, AccessMethod, AccessStatus, BenefitType, DashboardMetricId, Feature, PaymentMethod, PaymentStatus, Permission, PersonType, ReservationStatus, Role, SpaceStatus, TariffStrategyType, TenantConfig, TenantId } from './types'
 
 export const ROLE_LABELS: Record<Role, string> = {
   driver: 'Motorista',
@@ -46,6 +46,13 @@ export const BENEFIT_TYPE_LABELS: Record<BenefitType, string> = {
   horasGratis: 'Horas grátis',
 }
 export const BENEFIT_TYPES = Object.keys(BENEFIT_TYPE_LABELS) as BenefitType[]
+
+export const PAYMENT_METHODS: PaymentMethod[] = ['Pix', 'Crédito', 'Débito']
+export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  pendente: 'Pendente',
+  aprovado: 'Aprovado',
+  estornado: 'Estornado',
+}
 
 export const RESERVATION_STATUS_LABELS: Record<ReservationStatus, string> = {
   pendente: 'Pendente',

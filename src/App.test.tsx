@@ -6,6 +6,7 @@ import App from './App'
 import { TenantProvider, TenantThemeProvider } from './core/app-context'
 import { createAccess, deleteAccess, listAccess, updateAccess } from './test/fakeAccessApi'
 import { createAgreement, deleteAgreement, listAgreements, updateAgreement, validateAttendance } from './test/fakeAgreementsApi'
+import { createPayment, deletePayment, listPayments, refundPayment } from './test/fakePaymentsApi'
 import { cancelReservation, createReservation, deleteReservation, listReservations, updateReservation } from './test/fakeReservationsApi'
 import { createSpace, deleteSpace, listSpaces, updateSpace } from './test/fakeSpacesApi'
 import { createTariff, deleteTariff, listTariffs, updateTariff } from './test/fakeTariffsApi'
@@ -799,5 +800,137 @@ describe('convênios (Hospital)', () => {
 
     renderRoute('/admin/dashboard?tenant=shopping&role=admin')
     expect(screen.queryByRole('link', { name: /Convênios/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('pagamentos', () => {
+  const linhaDo = (comprovante: string) => within(screen.getByRole('table')).getByText(comprovante).closest('tr') as HTMLElement
+  const pagar = () => screen.getByRole('button', { name: /^Pagar/ })
+
+  it('mostra o histórico vindo do banco, com valor original e cobrado', async () => {
+    renderRoute('/app/payments?tenant=shopping&role=driver')
+    expect(await screen.findByRole('heading', { name: 'Histórico de pagamentos' })).toBeInTheDocument()
+    expect(within(linhaDo('CRE-AAA111')).getByText('R$ 48,00')).toBeInTheDocument()
+    expect(within(linhaDo('CRE-AAA111')).getByText('R$ 50,40')).toBeInTheDocument()
+    expect(within(linhaDo('CRE-AAA111')).getByText('Crédito · 3x')).toBeInTheDocument()
+    expect(within(linhaDo('DEB-BBB222')).getByText('Estornado')).toBeInTheDocument()
+    expect(listPayments).toHaveBeenCalledWith('shopping')
+  })
+
+  it('a prévia usa a tarifa ativa e a Strategy de pagamento (taxa no crédito parcelado)', async () => {
+    const user = userEvent.setup()
+    renderRoute('/app/payments?tenant=shopping&role=driver')
+    expect(await screen.findByRole('button', { name: 'Pagar R$ 24,00' })).toBeInTheDocument() // 2h × R$ 12, Pix sem taxa
+    await user.click(screen.getByRole('button', { name: /Crédito/ }))
+    await user.selectOptions(screen.getByLabelText('Parcelas'), '3')
+    expect(pagar()).toHaveTextContent('Pagar R$ 25,20') // 24 + 5%
+    expect(screen.getByText('Com taxa do parcelamento')).toBeInTheDocument()
+  })
+
+  it('paga com Pix e mostra o comprovante devolvido pela API', async () => {
+    const user = userEvent.setup()
+    renderRoute('/app/payments?tenant=shopping&role=driver')
+    await user.click(await screen.findByRole('button', { name: 'Pagar R$ 24,00' }))
+    expect(await screen.findByText('Pagamento aprovado')).toBeInTheDocument()
+    expect(screen.getAllByText('PIX-NOVO100').length).toBeGreaterThan(0)
+    expect(createPayment).toHaveBeenCalledWith('shopping', { vehicleId: '1', duration: 2, method: 'Pix', installments: 1, attendanceNumber: undefined })
+  })
+
+  it('envia as parcelas quando a forma é Crédito', async () => {
+    const user = userEvent.setup()
+    renderRoute('/app/payments?tenant=shopping&role=driver')
+    await screen.findByRole('button', { name: 'Pagar R$ 24,00' })
+    await user.click(screen.getByRole('button', { name: /Crédito/ }))
+    await user.selectOptions(screen.getByLabelText('Parcelas'), '2')
+    await user.click(pagar())
+    expect(await screen.findByText('Pagamento aprovado')).toBeInTheDocument()
+    expect(createPayment).toHaveBeenCalledWith('shopping', expect.objectContaining({ method: 'Crédito', installments: 2 }))
+  })
+
+  it('o campo Nº do atendimento só existe com medicalAgreement', async () => {
+    renderRoute('/app/payments?tenant=shopping&role=driver')
+    await screen.findByRole('heading', { name: 'Histórico de pagamentos' })
+    expect(screen.queryByLabelText(/Nº do atendimento/)).not.toBeInTheDocument()
+    cleanup()
+
+    renderRoute('/app/payments?tenant=hospital&role=driver')
+    expect(await screen.findByLabelText(/Nº do atendimento/)).toBeInTheDocument()
+  })
+
+  it('Hospital com convênio: verifica o atendimento, a prévia aplica TarifaComConvenio e o pagamento envia o atendimento', async () => {
+    const user = userEvent.setup()
+    renderRoute('/app/payments?tenant=hospital&role=driver')
+    expect(await screen.findByRole('button', { name: 'Pagar R$ 20,00' })).toBeInTheDocument() // sem convênio: 2h × R$ 10
+    await user.type(screen.getByLabelText(/Nº do atendimento/), 'ATD-48291')
+    await user.click(screen.getByRole('button', { name: 'Verificar atendimento' }))
+    expect(await screen.findByText(/Isenção de 100% para Helena Moreira/)).toBeInTheDocument()
+    expect(pagar()).toHaveTextContent('Pagar R$ 0,00')
+    await user.click(pagar())
+    expect(await screen.findByText('Pagamento aprovado')).toBeInTheDocument()
+    expect(createPayment).toHaveBeenCalledWith('hospital', expect.objectContaining({ attendanceNumber: 'ATD-48291' }))
+    expect(validateAttendance).toHaveBeenCalledWith('hospital', 'ATD-48291')
+  })
+
+  it('mostra o motivo quando o atendimento não é elegível', async () => {
+    const user = userEvent.setup()
+    renderRoute('/app/payments?tenant=hospital&role=driver')
+    await user.type(await screen.findByLabelText(/Nº do atendimento/), 'ATD-55120')
+    await user.click(screen.getByRole('button', { name: 'Verificar atendimento' }))
+    expect(await screen.findByText('O convênio Plano Antigo está inativo.')).toBeInTheDocument()
+    expect(pagar()).toHaveTextContent('Pagar R$ 20,00') // continua sem desconto
+  })
+
+  it('mostra o erro da API ao pagar (ex.: benefício já usado)', async () => {
+    createPayment.mockRejectedValueOnce(new Error('O benefício deste atendimento já foi utilizado.'))
+    const user = userEvent.setup()
+    renderRoute('/app/payments?tenant=hospital&role=driver')
+    await user.click(await screen.findByRole('button', { name: 'Pagar R$ 20,00' }))
+    expect(await screen.findByText('O benefício deste atendimento já foi utilizado.')).toBeInTheDocument()
+  })
+
+  it('estorna um pagamento aprovado', async () => {
+    const user = userEvent.setup()
+    renderRoute('/app/payments?tenant=shopping&role=driver')
+    await user.click(await screen.findByRole('button', { name: 'Estornar CRE-AAA111' }))
+    expect(await screen.findByText('Pagamento CRE-AAA111 estornado.')).toBeInTheDocument()
+    expect(within(linhaDo('CRE-AAA111')).getByText('Estornado')).toBeInTheDocument()
+    expect(refundPayment).toHaveBeenCalledWith('shopping', '1')
+  })
+
+  it('exclui um pagamento estornado', async () => {
+    const user = userEvent.setup()
+    renderRoute('/app/payments?tenant=shopping&role=driver')
+    await user.click(await screen.findByRole('button', { name: 'Excluir DEB-BBB222' }))
+    await user.click(screen.getByRole('button', { name: 'Excluir' }))
+    expect(await screen.findByText('Pagamento excluído.')).toBeInTheDocument()
+    expect(within(screen.getByRole('table')).queryByText('DEB-BBB222')).not.toBeInTheDocument()
+    expect(deletePayment).toHaveBeenCalledWith('shopping', '2')
+  })
+
+  it('mostra o erro da API ao excluir pagamento aprovado', async () => {
+    deletePayment.mockRejectedValueOnce(new Error('Somente pagamentos estornados podem ser excluídos. Estorne o pagamento antes.'))
+    const user = userEvent.setup()
+    renderRoute('/app/payments?tenant=shopping&role=driver')
+    await user.click(await screen.findByRole('button', { name: 'Excluir CRE-AAA111' }))
+    await user.click(screen.getByRole('button', { name: 'Excluir' }))
+    expect(await screen.findByText(/Somente pagamentos estornados/)).toBeInTheDocument()
+  })
+
+  it('Condomínio e Empresa: sem item no menu e rota bloqueada', () => {
+    renderRoute('/app/home?tenant=shopping&role=driver')
+    expect(screen.getAllByRole('link', { name: /Pagar/ }).length).toBeGreaterThan(0) // menu e ação rápida
+    cleanup()
+
+    renderRoute('/app/payments?tenant=condominium&role=resident')
+    expect(screen.getByRole('heading', { name: 'Conteúdo indisponível' })).toBeInTheDocument()
+    cleanup()
+
+    renderRoute('/app/payments?tenant=company&role=employee')
+    expect(screen.getByRole('heading', { name: 'Conteúdo indisponível' })).toBeInTheDocument()
+    cleanup()
+
+    renderRoute('/app/home?tenant=company&role=employee')
+    expect(screen.queryByRole('link', { name: /Pagar/ })).not.toBeInTheDocument()
+    expect(listPayments).not.toHaveBeenCalled()
   })
 })

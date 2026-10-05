@@ -164,12 +164,20 @@ describe('Pagamento', () => {
     expect(pagamento.status).toBe('estornado')
   })
 
-  it('impede processamento duplicado, valor zero e estorno sem aprovação', () => {
+  it('impede processamento duplicado, valor negativo e estorno sem aprovação', () => {
     const pagamento = new Pagamento('p-1', 28, new PagamentoCredito(), 'v-1')
     expect(() => pagamento.estornar()).toThrow('Apenas pagamentos aprovados')
     pagamento.processar()
     expect(() => pagamento.processar()).toThrow('já foi processado')
-    expect(() => new Pagamento('p-2', 0, new PagamentoDebito(), 'v-1').processar()).toThrow('maior que zero')
+    expect(() => new Pagamento('p-2', -5, new PagamentoDebito(), 'v-1').processar()).toThrow('não pode ser negativo')
+  })
+
+  it('aprova pagamento isento (valor zero, como no convênio de isenção)', () => {
+    const isento = new Pagamento('a1b2c3d4', 0, new PagamentoPix(), 'v-1')
+    isento.processar()
+    expect(isento.estaAprovado()).toBe(true)
+    expect(isento.valorCobrado).toBe(0)
+    expect(isento.comprovante).toBe('PIX-A1B2C3')
   })
 })
 

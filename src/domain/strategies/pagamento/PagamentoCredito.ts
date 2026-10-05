@@ -5,6 +5,9 @@ const TAXA_PARCELAMENTO = 0.05 // 5% quando parcelado
 
 /** Estratégia concreta: crédito à vista sem taxa ou parcelado em até 3x com 5% de taxa. */
 export class PagamentoCredito implements EstrategiaPagamento {
+  /** Exposto para a tela montar as opções sem repetir a regra. */
+  static MAXIMO_PARCELAS = MAXIMO_PARCELAS
+
   forma: FormaPagamento = 'Crédito'
   prefixoComprovante = 'CRE'
   parcelas: number

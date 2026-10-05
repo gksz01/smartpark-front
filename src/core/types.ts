@@ -144,14 +144,31 @@ export interface Reservation {
   status: ReservationStatus
 }
 
+/** Mesmas formas e status das classes de domínio Pagamento/EstrategiaPagamento. */
+export type PaymentMethod = 'Pix' | 'Crédito' | 'Débito'
+export type PaymentStatus = 'pendente' | 'aprovado' | 'estornado'
+
+/** Pagamento do tenant (tabela pagamentos). Todos os valores são calculados pela API. */
 export interface Payment {
   id: string
   vehicleId: string
-  period: string
+  vehicleLabel: string
+  reservationId: string | null
+  attendanceNumber: string | null
+  agreementName: string | null
+  duration: number
+  /** Valor pela tarifa ativa, antes do convênio. */
+  tariffAmount: number
+  /** Valor a pagar (com TarifaComConvenio quando houver atendimento). */
   amount: number
-  method: string
-  createdAt: string
+  /** Valor cobrado pela Strategy de pagamento (inclui taxa do crédito parcelado). */
+  chargedAmount: number
+  method: PaymentMethod
+  installments: number
+  detail: string
+  status: PaymentStatus
   receipt: string
+  createdAt: string
 }
 
 /** Entrada ou saída registrada no tenant (tabela acessos). */
@@ -220,5 +237,4 @@ export interface DemoState {
   role: Role
   academicMode: boolean
   vehicles: Vehicle[]
-  payments: Payment[]
 }

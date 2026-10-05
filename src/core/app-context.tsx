@@ -4,7 +4,7 @@ import { INITIAL_STATE } from '../data/mocks'
 import { resetDatabase } from '../services/api'
 import { createVehicle, deleteVehicle, listVehicles, updateVehicle, type VehicleInput } from '../services/vehiclesApi'
 import { isRole, isTenantId, TENANTS } from './config'
-import type { DemoState, Payment, Role, TenantId, Vehicle } from './types'
+import type { DemoState, Role, TenantId, Vehicle } from './types'
 
 const STORAGE_KEY = 'smartpark:parte3:v1'
 
@@ -14,7 +14,6 @@ type Action =
   | { type: 'SET_VEHICLES'; vehicles: Vehicle[] }
   | { type: 'SAVE_VEHICLE'; vehicle: Vehicle }
   | { type: 'DELETE_VEHICLE'; id: string }
-  | { type: 'ADD_PAYMENT'; payment: Payment }
   | { type: 'RESET' }
 
 function reducer(state: DemoState, action: Action): DemoState {
@@ -28,7 +27,6 @@ function reducer(state: DemoState, action: Action): DemoState {
       return { ...state, vehicles: exists ? state.vehicles.map((vehicle) => vehicle.id === action.vehicle.id ? action.vehicle : vehicle) : [...state.vehicles, action.vehicle] }
     }
     case 'DELETE_VEHICLE': return { ...state, vehicles: state.vehicles.filter((vehicle) => vehicle.id !== action.id) }
-    case 'ADD_PAYMENT': return { ...state, payments: [action.payment, ...state.payments] }
     case 'RESET': return structuredClone(INITIAL_STATE)
   }
 }
@@ -82,7 +80,6 @@ interface AppContextValue {
   vehiclesError: string
   saveVehicle: (vehicle: VehicleInput & { id?: string }) => Promise<Vehicle>
   deleteVehicle: (id: string) => Promise<void>
-  addPayment: (payment: Payment) => void
   resetDemo: () => Promise<void>
 }
 
@@ -143,7 +140,6 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       await deleteVehicle(state.tenantId, id)
       dispatch({ type: 'DELETE_VEHICLE', id })
     },
-    addPayment: (payment) => dispatch({ type: 'ADD_PAYMENT', payment }),
     resetDemo: async () => {
       try {
         await resetDatabase()

@@ -286,7 +286,14 @@ export function criarRotasReservas(db: Banco): Router {
       res.status(409).json({ erro: 'Cancele a reserva antes de excluir.' })
       return
     }
-    db.prepare('DELETE FROM reservas WHERE id = ? AND tenant_id = ?').run(linha.id, tenant)
+    try {
+      db.prepare('DELETE FROM reservas WHERE id = ? AND tenant_id = ?').run(linha.id, tenant)
+    } catch (falha) {
+      // Foreign key: a reserva aparece em um pagamento
+      if (!(falha instanceof Error && 'code' in falha && falha.code === 'SQLITE_CONSTRAINT_FOREIGNKEY')) throw falha
+      res.status(409).json({ erro: 'Esta reserva possui pagamento registrado. Exclua o pagamento antes.' })
+      return
+    }
     res.status(204).end()
   })
 

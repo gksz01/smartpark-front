@@ -1,7 +1,14 @@
 import { TENANTS } from '../../src/core/config'
 import type { TenantId } from '../../src/core/types'
 import { VARIANTE_POR_TENANT } from '../../src/domain/factories/variante/variantePorTenant'
+import { randomUUID } from 'node:crypto'
+import { Convenio } from '../../src/domain/Convenio'
+import { Pagamento } from '../../src/domain/Pagamento'
 import { Reserva } from '../../src/domain/Reserva'
+import { CRIAR_ESTRATEGIA_PAGAMENTO } from '../../src/domain/strategies/pagamento/estrategiaPorForma'
+import { TarifaComConvenio } from '../../src/domain/strategies/tarifa/TarifaComConvenio'
+import { Tarifa } from '../../src/domain/Tarifa'
+import type { BenefitType, PaymentMethod } from '../../src/core/types'
 import { configuracaoDaEstrategia } from '../../src/domain/strategies/tarifa/estrategiaPorTipo'
 import type { Banco } from '../database/conexao'
 
@@ -139,6 +146,18 @@ const ATENDIMENTOS_INICIAIS = [
   { tenant_id: 'hospital', convenio: 'Saúde Plena', numero: 'ATD-90442', paciente: 'Paulo Reis', horas_atras: 4, beneficio_aplicado: 1 }, // benefício já usado
 ]
 
+/**
+ * Pagamentos de demonstração (só tenants com billing=true).
+ * O de atendimento usa o ATD-90442, que o seed de atendimentos já grava com beneficio_aplicado = 1.
+ */
+const PAGAMENTOS_INICIAIS: { tenant_id: string; placa: string; duracao: number; forma: PaymentMethod; parcelas: number; estornado: boolean; horas_atras: number; vaga_da_reserva?: string; atendimento?: string }[] = [
+  { tenant_id: 'shopping', placa: 'BRA2E19', duracao: 2, forma: 'Pix', parcelas: 1, estornado: false, horas_atras: 26 },
+  { tenant_id: 'shopping', placa: 'BRA2E19', duracao: 4, forma: 'Crédito', parcelas: 3, estornado: false, horas_atras: 5 }, // 5% de taxa
+  { tenant_id: 'shopping', placa: 'BRA2E19', duracao: 4, forma: 'Débito', parcelas: 1, estornado: true, horas_atras: 30, vaga_da_reserva: 'B-11' }, // reserva cancelada → estornado
+  { tenant_id: 'hospital', placa: 'HSP2C34', duracao: 3, forma: 'Pix', parcelas: 1, estornado: false, horas_atras: 6 },
+  { tenant_id: 'hospital', placa: 'HSP2C34', duracao: 2, forma: 'Débito', parcelas: 1, estornado: false, horas_atras: 4, atendimento: 'ATD-90442' },
+]
+
 export function popularVeiculos(db: Banco): void {
   const inserir = db.prepare(`
     INSERT INTO veiculos (tenant_id, apelido, placa, modelo, cor, unidade, tag_rfid)
@@ -239,6 +258,44 @@ export function popularConvenios(db: Banco): void {
   }
 }
 
+export function popularPagamentos(db: Banco): void {
+  const inserir = db.prepare(`
+    INSERT INTO pagamentos (tenant_id, veiculo_id, reserva_id, atendimento_id, duracao_horas, valor_tarifa, valor, valor_cobrado, forma, parcelas, detalhe, status, comprovante, criado_em)
+    VALUES (@tenant_id, @veiculo_id, @reserva_id, @atendimento_id, @duracao_horas, @valor_tarifa, @valor, @valor_cobrado, @forma, @parcelas, @detalhe, @status, @comprovante, @criado_em)
+  `)
+  for (const item of PAGAMENTOS_INICIAIS) {
+    if (!TENANTS[item.tenant_id as TenantId].features.billing) continue
+    const veiculo = db.prepare('SELECT id FROM veiculos WHERE tenant_id = ? AND placa = ?').get(item.tenant_id, item.placa) as { id: number } | undefined
+    if (!veiculo) continue
+
+    const reserva = item.vaga_da_reserva
+      ? db.prepare("SELECT r.id FROM reservas r JOIN vagas g ON g.id = r.vaga_id WHERE r.tenant_id = ? AND g.codigo = ?").get(item.tenant_id, item.vaga_da_reserva) as { id: number } | undefined
+      : undefined
+    const atendimento = item.atendimento
+      ? db.prepare(`
+          SELECT a.id, c.id AS convenio_id, c.nome, c.tipo_beneficio, c.valor_beneficio, c.ativo
+          FROM atendimentos a JOIN convenios c ON c.id = a.convenio_id WHERE a.tenant_id = ? AND a.numero = ?
+        `).get(item.tenant_id, item.atendimento) as { id: number; convenio_id: number; nome: string; tipo_beneficio: BenefitType; valor_beneficio: number; ativo: number } | undefined
+      : undefined
+
+    // Mesmo caminho da API: Tarifa (Factory Method da variante) → [TarifaComConvenio] → Pagamento (Strategy)
+    const tarifa = VARIANTE_POR_TENANT[item.tenant_id as TenantId].criarTarifa('seed')
+    const tarifaAPagar = atendimento
+      ? new Tarifa('seed', tarifa.nome, new TarifaComConvenio(tarifa.estrategia, new Convenio(String(atendimento.convenio_id), atendimento.nome, atendimento.tipo_beneficio, atendimento.valor_beneficio, atendimento.ativo === 1)))
+      : tarifa
+    const criadoEm = new Date(Date.now() - item.horas_atras * 60 * 60 * 1000)
+    const pagamento = new Pagamento(randomUUID(), tarifaAPagar.calcular(item.duracao), CRIAR_ESTRATEGIA_PAGAMENTO[item.forma](item.parcelas), String(veiculo.id), undefined, criadoEm)
+    pagamento.processar()
+    if (item.estornado) pagamento.estornar()
+
+    inserir.run({
+      tenant_id: item.tenant_id, veiculo_id: veiculo.id, reserva_id: reserva?.id ?? null, atendimento_id: atendimento?.id ?? null,
+      duracao_horas: item.duracao, valor_tarifa: tarifa.calcular(item.duracao), valor: pagamento.valor, valor_cobrado: pagamento.valorCobrado,
+      forma: pagamento.forma, parcelas: item.parcelas, detalhe: pagamento.detalhe, status: pagamento.status, comprovante: pagamento.comprovante, criado_em: criadoEm.toISOString(),
+    })
+  }
+}
+
 export function popularBanco(db: Banco): void {
   popularVeiculos(db)
   popularUsuarios(db)
@@ -247,9 +304,10 @@ export function popularBanco(db: Banco): void {
   popularTarifas(db)
   popularReservas(db)
   popularConvenios(db)
+  popularPagamentos(db)
 }
 
-function tabelaVazia(db: Banco, tabela: 'veiculos' | 'usuarios' | 'vagas' | 'acessos' | 'tarifas' | 'reservas' | 'convenios'): boolean {
+function tabelaVazia(db: Banco, tabela: 'veiculos' | 'usuarios' | 'vagas' | 'acessos' | 'tarifas' | 'reservas' | 'convenios' | 'pagamentos'): boolean {
   const { total } = db.prepare(`SELECT COUNT(*) AS total FROM ${tabela}`).get() as { total: number }
   return total === 0
 }
@@ -267,13 +325,15 @@ export function popularTabelasVazias(db: Banco): string[] {
   if (tabelaVazia(db, 'tarifas')) { popularTarifas(db); populadas.push('tarifas') }
   if (tabelaVazia(db, 'reservas')) { popularReservas(db); populadas.push('reservas') }
   if (tabelaVazia(db, 'convenios')) { popularConvenios(db); populadas.push('convenios') }
+  if (tabelaVazia(db, 'pagamentos')) { popularPagamentos(db); populadas.push('pagamentos') }
   return populadas
 }
 
 /** Apaga todos os dados e insere novamente os registros de demonstração. */
 export function resetarBanco(db: Banco): void {
   const resetar = db.transaction(() => {
-    db.exec('DELETE FROM reservas') // primeiro: aponta para veiculos e vagas (foreign keys)
+    db.exec('DELETE FROM pagamentos') // primeiro: aponta para veiculos, reservas e atendimentos (foreign keys)
+    db.exec('DELETE FROM reservas') // aponta para veiculos e vagas
     db.exec('DELETE FROM atendimentos') // aponta para convenios
     db.exec('DELETE FROM veiculos')
     db.exec('DELETE FROM usuarios')
@@ -281,7 +341,7 @@ export function resetarBanco(db: Banco): void {
     db.exec('DELETE FROM acessos')
     db.exec('DELETE FROM tarifas')
     db.exec('DELETE FROM convenios')
-    db.exec("DELETE FROM sqlite_sequence WHERE name IN ('veiculos', 'usuarios', 'vagas', 'acessos', 'tarifas', 'reservas', 'convenios', 'atendimentos')") // reinicia os ids em 1
+    db.exec("DELETE FROM sqlite_sequence WHERE name IN ('veiculos', 'usuarios', 'vagas', 'acessos', 'tarifas', 'reservas', 'convenios', 'atendimentos', 'pagamentos')") // reinicia os ids em 1
     popularBanco(db)
   })
   resetar()

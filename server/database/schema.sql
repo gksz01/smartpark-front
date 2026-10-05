@@ -95,3 +95,24 @@ CREATE TABLE IF NOT EXISTS atendimentos (
   beneficio_aplicado  INTEGER NOT NULL DEFAULT 0 CHECK (beneficio_aplicado IN (0, 1)),  -- consumido no pagamento
   UNIQUE (tenant_id, numero)
 );
+
+CREATE TABLE IF NOT EXISTS pagamentos (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id       TEXT    NOT NULL CHECK (tenant_id IN ('shopping', 'condominium', 'hospital', 'company')),
+  veiculo_id      INTEGER NOT NULL REFERENCES veiculos (id),
+  reserva_id      INTEGER REFERENCES reservas (id),       -- opcional
+  atendimento_id  INTEGER REFERENCES atendimentos (id),   -- opcional (convênio do Hospital)
+  duracao_horas   INTEGER NOT NULL CHECK (duracao_horas > 0),
+  valor_tarifa    REAL    NOT NULL,  -- pela tarifa ativa, antes do convênio
+  valor           REAL    NOT NULL CHECK (valor >= 0),  -- a pagar (TarifaComConvenio quando há atendimento)
+  valor_cobrado   REAL    NOT NULL,  -- resultado da Strategy de pagamento (taxa do crédito parcelado)
+  forma           TEXT    NOT NULL CHECK (forma IN ('Pix', 'Crédito', 'Débito')),
+  parcelas        INTEGER NOT NULL DEFAULT 1,
+  detalhe         TEXT    NOT NULL DEFAULT '',
+  status          TEXT    NOT NULL CHECK (status IN ('pendente', 'aprovado', 'estornado')),
+  comprovante     TEXT    NOT NULL,
+  criado_em       TEXT    NOT NULL   -- ISO 8601
+);
+
+-- Um atendimento só pode gerar um pagamento: o próprio banco recusa o segundo.
+CREATE UNIQUE INDEX IF NOT EXISTS um_pagamento_por_atendimento ON pagamentos (atendimento_id) WHERE atendimento_id IS NOT NULL;

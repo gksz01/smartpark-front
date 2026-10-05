@@ -1,6 +1,8 @@
+import type { PaymentStatus } from '../core/types'
 import type { EstrategiaPagamento, FormaPagamento } from './strategies/pagamento/EstrategiaPagamento'
 
-export type StatusPagamento = 'pendente' | 'aprovado' | 'estornado'
+// Mesmos status usados pela tela e pela tabela pagamentos (core/types.ts).
+export type StatusPagamento = PaymentStatus
 
 /**
  * STRATEGY — Context do exemplo de pagamento.
@@ -52,8 +54,9 @@ export class Pagamento {
     if (this.status !== 'pendente') {
       throw new Error('Este pagamento já foi processado.')
     }
-    if (this.valor <= 0) {
-      throw new Error('O valor do pagamento deve ser maior que zero.')
+    // Valor zero é aceito: um convênio de isenção (TarifaComConvenio) gera pagamento isento de R$ 0,00
+    if (this.valor < 0) {
+      throw new Error('O valor do pagamento não pode ser negativo.')
     }
     const resultado = this.estrategia.processar(this.valor)
     this.valorCobrado = resultado.valorCobrado

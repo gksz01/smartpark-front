@@ -1,5 +1,7 @@
-// Mesmas formas oferecidas hoje na tela de pagamento.
-export type FormaPagamento = 'Pix' | 'Crédito' | 'Débito'
+import type { PaymentMethod } from '../../../core/types'
+
+// Mesmas formas usadas pela tela e pela tabela pagamentos (core/types.ts).
+export type FormaPagamento = PaymentMethod
 
 /** O que cada estratégia devolve depois de processar o valor. */
 export interface ResultadoPagamento {

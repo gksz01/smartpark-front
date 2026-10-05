@@ -134,9 +134,12 @@ export function criarRotasVeiculos(db: Banco): Router {
     try {
       resultado = db.prepare('DELETE FROM veiculos WHERE id = ? AND tenant_id = ?').run(req.params.id, tenant)
     } catch (falha) {
-      // Foreign key: o veículo ainda é usado por reservas
+      // Foreign key: o veículo ainda é usado por reservas ou pagamentos
       if (!(falha instanceof Error && 'code' in falha && falha.code === 'SQLITE_CONSTRAINT_FOREIGNKEY')) throw falha
-      res.status(409).json({ erro: 'Este veículo possui reservas. Exclua as reservas dele antes.' })
+      const { reservas } = db.prepare('SELECT COUNT(*) AS reservas FROM reservas WHERE veiculo_id = ?').get(req.params.id) as { reservas: number }
+      res.status(409).json({
+        erro: reservas > 0 ? 'Este veículo possui reservas. Exclua as reservas dele antes.' : 'Este veículo possui pagamentos registrados. Exclua os pagamentos dele antes.',
+      })
       return
     }
     if (resultado.changes === 0) {

@@ -11,5 +11,4 @@ export const INITIAL_STATE: DemoState = {
   role: 'driver',
   academicMode: true,
   vehicles: [], // carregados do banco pela API (ver server/seed/seed.ts)
-  payments: [],
 }

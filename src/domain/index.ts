@@ -24,6 +24,7 @@ export type { EstrategiaPagamento, FormaPagamento, ResultadoPagamento } from './
 export { PagamentoCredito } from './strategies/pagamento/PagamentoCredito'
 export { PagamentoDebito } from './strategies/pagamento/PagamentoDebito'
 export { PagamentoPix } from './strategies/pagamento/PagamentoPix'
+export { CRIAR_ESTRATEGIA_PAGAMENTO } from './strategies/pagamento/estrategiaPorForma'
 
 // Factory Method — Exemplo 1: vagas (produtos e creators)
 export { VagaComum } from './vagas/VagaComum'
