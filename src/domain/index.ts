@@ -47,6 +47,7 @@ export { VarianteCondominio } from './factories/variante/VarianteCondominio'
 export { VarianteEmpresa } from './factories/variante/VarianteEmpresa'
 export { VarianteHospital } from './factories/variante/VarianteHospital'
 export { VarianteShopping } from './factories/variante/VarianteShopping'
+export { VARIANTE_POR_TENANT } from './factories/variante/variantePorTenant'
 
 // Observer — infraestrutura comum
 export type { Observador } from './observer/Observador'

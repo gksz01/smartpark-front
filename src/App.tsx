@@ -22,6 +22,8 @@ export default function App() {
     <Route path="/app/home" element={portal(<HomePage />)} />
     <Route path="/app/parking" element={portal(<ParkingSearchPage />)} />
     <Route path="/app/parking/:id" element={portal(<ParkingDetailPage />)} />
+    <Route path="/app/reservations" element={portal(<ReservationPage />, 'portal', ['reservation'])} />
+    {/* Rota antiga mantida como alias: mesma página */}
     <Route path="/app/reservations/new" element={portal(<ReservationPage />, 'portal', ['reservation'])} />
     <Route path="/app/vehicles" element={portal(<VehiclesPage />, 'vehicles')} />
     <Route path="/app/payments" element={portal(<PaymentsPage />, 'portal', ['payments', 'billing'])} />

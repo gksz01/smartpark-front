@@ -6,7 +6,7 @@ import { Tarifa } from '../../src/domain/Tarifa'
 import type { Banco } from '../database/conexao'
 
 /** Formato de uma linha da tabela tarifas. */
-interface LinhaTarifa {
+export interface LinhaTarifa {
   id: number
   tenant_id: string
   nome: string
@@ -17,7 +17,7 @@ interface LinhaTarifa {
 }
 
 /** Linha do banco → Tarifa (Context) com a Strategy reconstruída a partir de tipo_estrategia. */
-function paraTarifa(linha: LinhaTarifa): Tarifa {
+export function paraTarifa(linha: LinhaTarifa): Tarifa {
   const estrategia = CRIAR_ESTRATEGIA[linha.tipo_estrategia]({ tipo: linha.tipo_estrategia, valor: linha.valor, valorMaximoDiario: linha.valor_maximo_diario })
   return new Tarifa(String(linha.id), linha.nome, estrategia)
 }

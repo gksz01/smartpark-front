@@ -122,15 +122,23 @@ export interface Tariff {
   active: boolean
 }
 
+/** Mesmos status da classe de domínio Reserva. */
+export type ReservationStatus = 'pendente' | 'confirmada' | 'cancelada' | 'concluida'
+
+/** Reserva do tenant (tabela reservas). */
 export interface Reservation {
   id: string
-  parkingId: string
+  vehicleId: string
+  /** Apelido e placa do veículo, vindos do JOIN com veiculos. */
+  vehicleLabel: string
+  spaceId: string
+  spaceCode: string
   date: string
   time: string
   duration: number
-  vehicleId: string
+  /** Calculado pela API com reserva.calcularEstimativa(tarifa ativa). */
   estimate: number
-  status: 'confirmed' | 'completed'
+  status: ReservationStatus
 }
 
 export interface Payment {
@@ -194,7 +202,6 @@ export interface DemoState {
   role: Role
   academicMode: boolean
   vehicles: Vehicle[]
-  reservations: Reservation[]
   payments: Payment[]
   medicalValidations: MedicalValidation[]
 }

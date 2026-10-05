@@ -6,7 +6,7 @@ import type { Vaga } from '../../src/domain/Vaga'
 import type { Banco } from '../database/conexao'
 
 /** Formato de uma linha da tabela vagas. */
-interface LinhaVaga {
+export interface LinhaVaga {
   id: number
   tenant_id: string
   codigo: string
@@ -157,7 +157,14 @@ export function criarRotasVagas(db: Banco): Router {
       res.status(409).json({ erro: `A vaga ${vaga.codigo} está ${vaga.status} e não pode ser excluída. Libere ou bloqueie a vaga antes.` })
       return
     }
-    db.prepare('DELETE FROM vagas WHERE id = ? AND tenant_id = ?').run(req.params.id, tenant)
+    try {
+      db.prepare('DELETE FROM vagas WHERE id = ? AND tenant_id = ?').run(req.params.id, tenant)
+    } catch (falha) {
+      // Foreign key: a vaga ainda aparece em reservas (canceladas ou concluídas)
+      if (!(falha instanceof Error && 'code' in falha && falha.code === 'SQLITE_CONSTRAINT_FOREIGNKEY')) throw falha
+      res.status(409).json({ erro: `A vaga ${vaga.codigo} possui reservas registradas. Exclua as reservas dela antes.` })
+      return
+    }
     res.status(204).end()
   })
 

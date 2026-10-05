@@ -12,7 +12,7 @@ const portalNav: NavigationItem[] = [
   { to: '/app/home', label: 'Início', icon: CircleParking, permission: 'portal' },
   { to: '/app/parking', label: 'Buscar', icon: Search, permission: 'portal' },
   { to: '/app/vehicles', label: 'Veículos', icon: Car, permission: 'vehicles' },
-  { to: '/app/reservations/new', label: 'Reservar', icon: TicketCheck, feature: 'reservation', permission: 'portal' },
+  { to: '/app/reservations', label: 'Reservar', icon: TicketCheck, feature: 'reservation', permission: 'portal' },
   { to: '/app/payments', label: 'Pagar', icon: CreditCard, feature: 'payments', permission: 'portal' },
 ]
 

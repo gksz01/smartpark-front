@@ -1,11 +1,17 @@
-import { ArrowLeft, ArrowRight, CalendarDays, Car, Check, Clock3, CreditCard, KeyRound, MapPin, Navigation, QrCode, Search, ShieldCheck, Sparkles, TicketCheck, UserRoundCheck, WalletCards, Zap } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { ArrowLeft, ArrowRight, CalendarDays, Car, Check, Clock3, CreditCard, Edit3, KeyRound, MapPin, Navigation, QrCode, Search, ShieldCheck, Sparkles, TicketCheck, Trash2, UserRoundCheck, WalletCards, X, XCircle, Zap } from 'lucide-react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTenant } from '../../core/app-context'
-import { ACCESS_LABELS } from '../../core/config'
-import type { Parking, Payment, Reservation } from '../../core/types'
+import { ACCESS_LABELS, RESERVATION_STATUS_LABELS } from '../../core/config'
+import type { Parking, ParkingSpace, Payment, Reservation, Tariff, TenantId } from '../../core/types'
 import { PARKINGS } from '../../data/mocks'
-import { Alert, Button, Card, EmptyState, FormField, OccupancyBar, PageHeader, StatusBadge, VariationInfo } from '../../shared/ui'
+import { Reserva } from '../../domain/Reserva'
+import { CRIAR_ESTRATEGIA } from '../../domain/strategies/tarifa/estrategiaPorTipo'
+import { Tarifa } from '../../domain/Tarifa'
+import { cancelReservation, createReservation, deleteReservation, listReservations, updateReservation } from '../../services/reservationsApi'
+import { listSpaces } from '../../services/spacesApi'
+import { listTariffs } from '../../services/tariffsApi'
+import { Alert, Button, Card, ConfirmDialog, DataTable, EmptyState, FormField, OccupancyBar, PageHeader, StatusBadge, VariationInfo, type Column } from '../../shared/ui'
 
 function ParkingCard({ parking }: { parking: Parking }) {
   const { tenant } = useTenant()
@@ -19,7 +25,7 @@ export function HomePage() {
   const vehicle = state.vehicles[0]
   const active = PARKINGS[0]
   const quickActions = [
-    tenant.features.reservation && { label: 'Reservar', icon: CalendarDays, to: '/app/reservations/new' },
+    tenant.features.reservation && { label: 'Reservar', icon: CalendarDays, to: '/app/reservations' },
     tenant.features.payments && { label: 'Pagar', icon: CreditCard, to: '/app/payments' },
     tenant.features.visitorManagement && { label: 'Autorizar visita', icon: UserRoundCheck, action: 'Convite de visitante gerado com sucesso.' },
     tenant.features.valet && { label: 'Manobrista', icon: KeyRound, action: 'Manobrista solicitado. Previsão: 8 minutos.' },
@@ -58,21 +64,284 @@ export function ParkingDetailPage() {
   return <div className="portal-content page-top"><Link className="back-link" to="/app/parking"><ArrowLeft size={16} /> Voltar para busca</Link><div className="detail-hero"><div><StatusBadge tone="success">Aberto agora</StatusBadge><h1>{parking.name}</h1><p><MapPin size={16} /> {parking.address} · {parking.distance}</p></div><div className="detail-number"><strong>{parking.available}</strong><span>vagas livres</span></div></div>
     <VariationInfo>Preço, botão de reserva e serviço de manobrista são gates independentes. O método de entrada vem da configuração do cliente, sem duplicar esta página.</VariationInfo>
     <div className="detail-grid"><Card><h2>Ocupação agora</h2><div className="occupancy-big"><strong>{parking.total - parking.available}</strong><span>de {parking.total} vagas ocupadas</span></div><OccupancyBar used={parking.total - parking.available} total={parking.total} /><div className="detail-stat-row"><span><small>Horário</small><strong>{parking.open24h ? 'Aberto 24h' : '06h às 23h'}</strong></span>{tenant.features.billing && <span><small>Tarifa</small><strong>R$ {parking.pricePerHour},00/h</strong></span>}<span><small>Acesso</small><strong>{ACCESS_LABELS[tenant.accessMethod]}</strong></span></div></Card><Card><h2>Serviços disponíveis</h2><div className="service-list">{parking.services.filter((service) => service !== 'Manobrista' || tenant.features.valet).map((service) => <div key={service}><span><Check size={15} /></span>{service}</div>)}{tenant.features.valet && !parking.services.includes('Manobrista') && <div><span><Check size={15} /></span>Manobrista</div>}</div></Card></div>
-    <Card className="access-callout"><div className="access-visual">{tenant.accessMethod === 'QR_CODE' ? <QrCode /> : tenant.accessMethod === 'RFID' ? <Zap /> : <Car />}</div><div><p className="eyebrow">Entrada configurada</p><h2>{ACCESS_LABELS[tenant.accessMethod]}</h2><p>Ao chegar, siga a sinalização. A validação é simulada automaticamente neste protótipo.</p></div>{tenant.features.reservation && <Link className="button button-primary" to="/app/reservations/new">Reservar vaga <ArrowRight size={16} /></Link>}</Card>
+    <Card className="access-callout"><div className="access-visual">{tenant.accessMethod === 'QR_CODE' ? <QrCode /> : tenant.accessMethod === 'RFID' ? <Zap /> : <Car />}</div><div><p className="eyebrow">Entrada configurada</p><h2>{ACCESS_LABELS[tenant.accessMethod]}</h2><p>Ao chegar, siga a sinalização. A validação é simulada automaticamente neste protótipo.</p></div>{tenant.features.reservation && <Link className="button button-primary" to="/app/reservations">Reservar vaga <ArrowRight size={16} /></Link>}</Card>
   </div>
 }
 
+const DURATION_OPTIONS = [1, 2, 4, 8]
+const RESERVATION_TONE = { pendente: 'warning', confirmada: 'success', cancelada: 'neutral', concluida: 'info' } as const
+
+function todayIso() {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
+/** Tarifa ativa → Tarifa (Context) com a Strategy gravada no banco. */
+function activeTarifa(tariffs: Tariff[]): Tarifa | null {
+  const row = tariffs.find((tariff) => tariff.active)
+  if (!row) return null
+  return new Tarifa(row.id, row.name, CRIAR_ESTRATEGIA[row.strategy]({ tipo: row.strategy, valor: row.value, valorMaximoDiario: row.maxDaily }))
+}
+
+/** Prévia da estimativa pelo mesmo caminho da API: Reserva → Tarifa → Strategy (sem fórmula no React). */
+function previewEstimate(tarifa: Tarifa | null, date: string, time: string, duration: number): number | null {
+  if (!tarifa) return null
+  return new Reserva('', '', '', date, time, duration).calcularEstimativa(tarifa)
+}
+
+/** Reservas, vagas livres e tarifa ativa do tenant, vindas da API. */
+async function loadReservationData(tenantId: TenantId) {
+  const [reservations, spaces, tariffs] = await Promise.all([
+    listReservations(tenantId),
+    listSpaces(tenantId),
+    listTariffs(tenantId).catch(() => [] as Tariff[]), // sem tarifa ativa, a API recusa a reserva
+  ])
+  return { reservations, freeSpaces: spaces.filter((space) => space.status === 'Livre'), tarifa: activeTarifa(tariffs) }
+}
+
 export function ReservationPage() {
-  const { state, tenant, addReservation } = useTenant()
+  const { state, tenant, dataVersion } = useTenant()
   const navigate = useNavigate()
-  const [saved, setSaved] = useState(false)
-  const [form, setForm] = useState({ date: '2026-09-05', time: '18:30', duration: '2', vehicleId: state.vehicles[0]?.id ?? '' })
-  const estimate = Number(form.duration) * PARKINGS[0].pricePerHour
-  const submit = (event: FormEvent) => { event.preventDefault(); const reservation: Reservation = { id: crypto.randomUUID(), parkingId: PARKINGS[0].id, date: form.date, time: form.time, duration: Number(form.duration), vehicleId: form.vehicleId, estimate, status: 'confirmed' }; addReservation(reservation); setSaved(true) }
-  return <div className="portal-content page-top narrow-page"><PageHeader eyebrow="Reserva antecipada" title="Garanta sua vaga" description={`Reserve no ${PARKINGS[0].name} em poucos passos.`} />
-    <VariationInfo>Esta rota e sua entrada no menu só existem quando `reservation=true`. Formulários, veículo e estimativa reutilizam dados e componentes do núcleo.</VariationInfo>
-    {saved ? <Card className="success-panel"><span><TicketCheck size={30} /></span><p className="eyebrow">Reserva confirmada</p><h2>Sua vaga está garantida.</h2><p>Chegue até 15 minutos após o horário reservado e acesse por {ACCESS_LABELS[tenant.accessMethod]}.</p><div className="receipt-code">Reserva #{state.reservations.length + 2481}</div><Button onClick={() => navigate('/app/home')}>Voltar ao início</Button></Card> : <form onSubmit={submit}><Card className="form-card"><div className="form-card-title"><MapPin size={20} /><div><strong>{PARKINGS[0].name}</strong><p>{PARKINGS[0].address}</p></div></div><div className="form-grid"><FormField label="Data"><input required type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} /></FormField><FormField label="Horário"><input required type="time" value={form.time} onChange={(event) => setForm({ ...form, time: event.target.value })} /></FormField><FormField label="Período"><select value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })}><option value="1">1 hora</option><option value="2">2 horas</option><option value="4">4 horas</option><option value="8">8 horas</option></select></FormField><FormField label="Veículo"><select required value={form.vehicleId} onChange={(event) => setForm({ ...form, vehicleId: event.target.value })}>{state.vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.nickname} · {vehicle.plate}</option>)}</select></FormField></div><div className="estimate"><span>Estimativa da reserva</span><strong>R$ {estimate.toFixed(2).replace('.', ',')}</strong></div><Button className="w-full justify-center" type="submit" disabled={!state.vehicles.length}>Confirmar reserva <ArrowRight size={17} /></Button></Card></form>}
-  </div>
+  const [reservations, setReservations] = useState<Reservation[]>([])
+  const [freeSpaces, setFreeSpaces] = useState<ParkingSpace[]>([])
+  const [tarifa, setTarifa] = useState<Tarifa | null>(null)
+  const [saved, setSaved] = useState<Reservation | null>(null)
+  const [form, setForm] = useState({ date: todayIso(), time: '18:30', duration: '2', vehicleId: '', spaceId: '' })
+  const [editing, setEditing] = useState<Reservation | null>(null)
+  const [editForm, setEditForm] = useState({ date: '', time: '', duration: '2' })
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+
+  // Veículo e vaga escolhidos (ou o primeiro disponível)
+  const vehicleId = form.vehicleId || state.vehicles[0]?.id || ''
+  const spaceId = freeSpaces.some((space) => space.id === form.spaceId) ? form.spaceId : freeSpaces[0]?.id ?? ''
+  const estimate = previewEstimate(tarifa, form.date, form.time, Number(form.duration))
+
+  // READ: carrega reservas, vagas livres e tarifa ativa do tenant
+  useEffect(() => {
+    let current = true
+    loadReservationData(tenant.id)
+      .then((data) => {
+        if (!current) return
+        setReservations(data.reservations)
+        setFreeSpaces(data.freeSpaces)
+        setTarifa(data.tarifa)
+        setError('')
+      })
+      .catch((failure: Error) => {
+        if (!current) return
+        setReservations([])
+        setError(`Não foi possível carregar as reservas: ${failure.message}`)
+      })
+    return () => { current = false }
+  }, [tenant.id, dataVersion])
+
+  const reload = async () => {
+    const data = await loadReservationData(tenant.id)
+    setReservations(data.reservations)
+    setFreeSpaces(data.freeSpaces)
+    setTarifa(data.tarifa)
+  }
+
+  // CREATE: a API calcula com a Strategy e confirma pelo Observer (vaga → Reservada)
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    setMessage('')
+    setError('')
+    try {
+      const result = await createReservation(tenant.id, { vehicleId, spaceId, date: form.date, time: form.time, duration: Number(form.duration) })
+      setSaved(result.reservation)
+      setMessage(result.notifications.join(' ') || 'Reserva confirmada.')
+      await reload()
+    } catch (failure) {
+      setError((failure as Error).message)
+    }
+  }
+
+  const openEdit = (reservation: Reservation) => {
+    setEditing(reservation)
+    setEditForm({ date: reservation.date, time: reservation.time, duration: String(reservation.duration) })
+    setMessage('')
+    setError('')
+  }
+
+  // UPDATE: data, horário e duração; a API recalcula a estimativa
+  const submitEdit = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!editing) return
+    try {
+      const result = await updateReservation(tenant.id, editing.id, { date: editForm.date, time: editForm.time, duration: Number(editForm.duration) })
+      setEditing(null)
+      setMessage(result.notifications.join(' ') || 'Reserva alterada.')
+      await reload()
+    } catch (failure) {
+      setError((failure as Error).message)
+    }
+  }
+
+  // UPDATE (status): cancelar libera a vaga pelo Observer
+  const cancel = async (reservation: Reservation) => {
+    setMessage('')
+    setError('')
+    try {
+      const result = await cancelReservation(tenant.id, reservation.id)
+      setMessage(result.notifications.join(' ') || 'Reserva cancelada.')
+      await reload()
+    } catch (failure) {
+      setError((failure as Error).message)
+    }
+  }
+
+  // DELETE: a API só aceita reservas canceladas ou concluídas
+  const confirmDelete = async (id: string) => {
+    setDeleteId(null)
+    setMessage('')
+    try {
+      await deleteReservation(tenant.id, id)
+      setReservations((current) => current.filter((reservation) => reservation.id !== id))
+      setMessage('Reserva excluída.')
+    } catch (failure) {
+      setError((failure as Error).message)
+    }
+  }
+
+  const isActive = (reservation: Reservation) => reservation.status === 'pendente' || reservation.status === 'confirmada'
+
+  const columns: Column<Reservation>[] = [
+    { header: 'Veículo', render: (row) => row.vehicleLabel },
+    { header: 'Vaga', render: (row) => <strong>{row.spaceCode}</strong> },
+    { header: 'Data', render: (row) => row.date.split('-').reverse().join('/') },
+    { header: 'Horário', render: (row) => row.time },
+    { header: 'Duração', render: (row) => `${row.duration}h` },
+    { header: 'Valor', render: (row) => `R$ ${row.estimate.toFixed(2).replace('.', ',')}` },
+    { header: 'Status', render: (row) => <StatusBadge tone={RESERVATION_TONE[row.status]}>{RESERVATION_STATUS_LABELS[row.status]}</StatusBadge> },
+    {
+      header: 'Ações',
+      render: (row) => (
+        <div className="flex gap-2">
+          {isActive(row) && <Button variant="secondary" onClick={() => openEdit(row)} aria-label={`Editar reserva da vaga ${row.spaceCode}`}><Edit3 size={16} /> Editar</Button>}
+          {isActive(row) && <Button variant="secondary" onClick={() => cancel(row)} aria-label={`Cancelar reserva da vaga ${row.spaceCode}`}><XCircle size={16} /> Cancelar</Button>}
+          <Button variant="ghost" onClick={() => setDeleteId(row.id)} aria-label={`Excluir reserva da vaga ${row.spaceCode}`}><Trash2 size={16} /> Excluir</Button>
+        </div>
+      ),
+    },
+  ]
+
+  const editEstimate = previewEstimate(tarifa, editForm.date, editForm.time, Number(editForm.duration))
+
+  return (
+    <div className="portal-content page-top narrow-page">
+      <PageHeader eyebrow="Reserva antecipada" title="Garanta sua vaga" description={`Reserve no ${PARKINGS[0].name} em poucos passos.`} />
+      <VariationInfo>
+        Esta rota e sua entrada no menu só existem quando `reservation=true`. A estimativa usa a tarifa ativa (Strategy) e a confirmação
+        passa pelo Observer EventosReserva, que reserva a vaga e gera a notificação.
+      </VariationInfo>
+      {message && <Alert>{message}</Alert>}
+      {error && !editing && <Alert tone="danger">{error}</Alert>}
+
+      {saved ? (
+        <Card className="success-panel">
+          <span><TicketCheck size={30} /></span>
+          <p className="eyebrow">Reserva confirmada</p>
+          <h2>Sua vaga está garantida.</h2>
+          <p>Chegue até 15 minutos após o horário reservado e acesse por {ACCESS_LABELS[tenant.accessMethod]}.</p>
+          <div className="receipt-code">Reserva #{saved.id} · Vaga {saved.spaceCode} · R$ {saved.estimate.toFixed(2).replace('.', ',')}</div>
+          <div className="flex justify-center gap-2">
+            <Button variant="secondary" onClick={() => setSaved(null)}>Nova reserva</Button>
+            <Button onClick={() => navigate('/app/home')}>Voltar ao início</Button>
+          </div>
+        </Card>
+      ) : (
+        <form onSubmit={submit}>
+          <Card className="form-card">
+            <div className="form-card-title"><MapPin size={20} /><div><strong>{PARKINGS[0].name}</strong><p>{PARKINGS[0].address}</p></div></div>
+            <div className="form-grid">
+              <FormField label="Data">
+                <input required type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} />
+              </FormField>
+              <FormField label="Horário">
+                <input required type="time" value={form.time} onChange={(event) => setForm({ ...form, time: event.target.value })} />
+              </FormField>
+              <FormField label="Período">
+                <select value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })}>
+                  {DURATION_OPTIONS.map((hours) => <option key={hours} value={hours}>{hours} {hours === 1 ? 'hora' : 'horas'}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Veículo">
+                <select required value={vehicleId} onChange={(event) => setForm({ ...form, vehicleId: event.target.value })}>
+                  {state.vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.nickname} · {vehicle.plate}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Vaga">
+                <select required value={spaceId} onChange={(event) => setForm({ ...form, spaceId: event.target.value })}>
+                  {freeSpaces.map((space) => <option key={space.id} value={space.id}>{space.code} · {space.type}</option>)}
+                </select>
+              </FormField>
+            </div>
+            <div className="estimate">
+              <span>Estimativa da reserva{tarifa ? ` · ${tarifa.nome}` : ''}</span>
+              <strong>{estimate === null ? 'Sem tarifa ativa' : `R$ ${estimate.toFixed(2).replace('.', ',')}`}</strong>
+            </div>
+            <Button className="w-full justify-center" type="submit" disabled={!state.vehicles.length || !freeSpaces.length}>Confirmar reserva <ArrowRight size={17} /></Button>
+          </Card>
+        </form>
+      )}
+
+      <section className="content-section">
+        <Card>
+          <div className="table-toolbar">
+            <div>
+              <h2>Minhas reservas</h2>
+              <p>{reservations.length} reservas · {freeSpaces.length} vagas livres</p>
+            </div>
+          </div>
+          <DataTable rows={reservations} columns={columns} emptyMessage="Nenhuma reserva registrada." />
+        </Card>
+      </section>
+
+      {editing && (
+        <div className="modal-backdrop">
+          <form className="modal" onSubmit={submitEdit} role="dialog" aria-modal="true" aria-labelledby="reservation-edit-title">
+            <button type="button" className="modal-close" onClick={() => setEditing(null)} aria-label="Fechar"><X size={18} /></button>
+            <p className="eyebrow">Vaga {editing.spaceCode}</p>
+            <h2 id="reservation-edit-title">Alterar reserva</h2>
+            <div className="mt-6 space-y-4">
+              <FormField label="Data">
+                <input required type="date" value={editForm.date} onChange={(event) => setEditForm({ ...editForm, date: event.target.value })} />
+              </FormField>
+              <FormField label="Horário">
+                <input required type="time" value={editForm.time} onChange={(event) => setEditForm({ ...editForm, time: event.target.value })} />
+              </FormField>
+              <FormField label="Período">
+                <select value={editForm.duration} onChange={(event) => setEditForm({ ...editForm, duration: event.target.value })}>
+                  {DURATION_OPTIONS.map((hours) => <option key={hours} value={hours}>{hours} {hours === 1 ? 'hora' : 'horas'}</option>)}
+                </select>
+              </FormField>
+            </div>
+            <div className="estimate mt-5">
+              <span>Nova estimativa</span>
+              <strong>{editEstimate === null ? 'Sem tarifa ativa' : `R$ ${editEstimate.toFixed(2).replace('.', ',')}`}</strong>
+            </div>
+            {error && <div className="mt-5"><Alert tone="danger">{error}</Alert></div>}
+            <div className="mt-7 flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setEditing(null)}>Fechar</Button>
+              <Button type="submit">Salvar alteração</Button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {deleteId && (
+        <ConfirmDialog
+          title="Excluir reserva?"
+          description="Somente reservas canceladas ou concluídas podem ser excluídas."
+          onCancel={() => setDeleteId(null)}
+          onConfirm={() => confirmDelete(deleteId)}
+        />
+      )}
+    </div>
+  )
 }
 
 export function PaymentsPage() {

@@ -11,9 +11,6 @@ export const INITIAL_STATE: DemoState = {
   role: 'driver',
   academicMode: true,
   vehicles: [], // carregados do banco pela API (ver server/seed/seed.ts)
-  reservations: [
-    { id: 'res-1', parkingId: 'central', date: '2026-09-05', time: '18:30', duration: 2, vehicleId: 'v-1', estimate: 24, status: 'confirmed' },
-  ],
   payments: [],
   medicalValidations: [],
 }

@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { TenantProvider, TenantThemeProvider } from './core/app-context'
 import { createAccess, deleteAccess, listAccess, updateAccess } from './test/fakeAccessApi'
+import { cancelReservation, createReservation, deleteReservation, listReservations, updateReservation } from './test/fakeReservationsApi'
 import { createSpace, deleteSpace, listSpaces, updateSpace } from './test/fakeSpacesApi'
 import { createTariff, deleteTariff, listTariffs, updateTariff } from './test/fakeTariffsApi'
 import { createUser, deleteUser, listUsers, updateUser } from './test/fakeUsersApi'
@@ -33,6 +34,7 @@ const routes = [
   ['/app/home?tenant=shopping&role=driver', /Sua vaga, do seu jeito/],
   ['/app/parking?tenant=shopping&role=driver', 'Estacionamentos próximos'],
   ['/app/parking/central?tenant=shopping&role=driver', 'Estacionamento Central'],
+  ['/app/reservations?tenant=shopping&role=driver', 'Garanta sua vaga'],
   ['/app/reservations/new?tenant=shopping&role=driver', 'Garanta sua vaga'],
   ['/app/vehicles?tenant=shopping&role=driver', 'Meus veículos'],
   ['/app/payments?tenant=shopping&role=driver', 'Finalizar estacionamento'],
@@ -561,5 +563,123 @@ describe('tarifas', () => {
 
     renderRoute('/admin/dashboard?tenant=condominium&role=admin')
     expect(screen.queryByRole('link', { name: /Tarifas/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('reservas', () => {
+  const linhaDa = (vaga: string) => within(screen.getByRole('table')).getByText(vaga).closest('tr') as HTMLElement
+
+  it('a rota principal e o alias /new abrem a mesma página com as reservas do banco', async () => {
+    renderRoute('/app/reservations?tenant=shopping&role=driver')
+    expect(await screen.findByText('A-03')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Minhas reservas' })).toBeInTheDocument()
+    cleanup()
+
+    renderRoute('/app/reservations/new?tenant=shopping&role=driver')
+    expect(await screen.findByText('A-03')).toBeInTheDocument()
+    expect(listReservations).toHaveBeenCalledWith('shopping')
+  })
+
+  it('lista as reservas com status; só as ativas podem ser editadas ou canceladas', async () => {
+    renderRoute('/app/reservations?tenant=shopping&role=driver')
+    await screen.findByText('A-03')
+    expect(within(linhaDa('A-03')).getByText('Confirmada')).toBeInTheDocument()
+    expect(within(linhaDa('B-11')).getByText('Cancelada')).toBeInTheDocument()
+    expect(within(linhaDa('A-03')).getByText('R$ 24,00')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancelar reserva da vaga A-03' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Cancelar reserva da vaga B-11' })).not.toBeInTheDocument()
+  })
+
+  it('a estimativa vem da tarifa ativa (Strategy), inclusive o teto diário', async () => {
+    const user = userEvent.setup()
+    renderRoute('/app/reservations?tenant=shopping&role=driver')
+    expect(await screen.findByText('R$ 24,00', { selector: '.estimate strong' })).toBeInTheDocument() // 2h × R$ 12
+    expect(screen.getByText(/Estimativa da reserva · Tarifa Aurora/)).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Período'), '8')
+    expect(screen.getByText('R$ 60,00', { selector: '.estimate strong' })).toBeInTheDocument() // 8h × 12 = 96, limitado ao teto de R$ 60
+  })
+
+  it('cria uma reserva só com vagas livres e mostra a notificação do Observer', async () => {
+    const user = userEvent.setup()
+    renderRoute('/app/reservations?tenant=shopping&role=driver')
+    await screen.findByText('A-03')
+    const vagas = Array.from((screen.getByLabelText('Vaga') as HTMLSelectElement).options).map((option) => option.text)
+    expect(vagas).toEqual(['A-01 · Comum', 'B-13 · Elétrico']) // A-02 está Ocupada
+    await user.selectOptions(screen.getByLabelText('Vaga'), '3')
+    await user.click(screen.getByRole('button', { name: /Confirmar reserva/ }))
+    expect(await screen.findByText('Sua vaga está garantida.')).toBeInTheDocument()
+    expect(screen.getByText('Reserva confirmada para a vaga B-13.')).toBeInTheDocument()
+    expect(createReservation).toHaveBeenCalledWith('shopping', expect.objectContaining({ vehicleId: '1', spaceId: '3', time: '18:30', duration: 2 }))
+  })
+
+  it('mostra o erro da API quando a vaga não está disponível', async () => {
+    createReservation.mockRejectedValueOnce(new Error('A vaga A-01 não está livre para reserva (status: Ocupada).'))
+    const user = userEvent.setup()
+    renderRoute('/app/reservations?tenant=shopping&role=driver')
+    await screen.findByText('A-03')
+    await user.click(screen.getByRole('button', { name: /Confirmar reserva/ }))
+    expect(await screen.findByText(/não está livre para reserva/)).toBeInTheDocument()
+  })
+
+  it('edita data, horário e duração de uma reserva ativa', async () => {
+    const user = userEvent.setup()
+    renderRoute('/app/reservations?tenant=shopping&role=driver')
+    await user.click(await screen.findByRole('button', { name: 'Editar reserva da vaga A-03' }))
+    const modal = within(screen.getByRole('dialog'))
+    await user.selectOptions(modal.getByLabelText('Período'), '4')
+    expect(modal.getByText('R$ 48,00')).toBeInTheDocument() // prévia pela Strategy
+    await user.click(modal.getByRole('button', { name: 'Salvar alteração' }))
+    expect(await screen.findByText('Nova data: 2026-10-07 às 18:30, por 4h.')).toBeInTheDocument()
+    expect(updateReservation).toHaveBeenCalledWith('shopping', '1', { date: '2026-10-07', time: '18:30', duration: 4 })
+  })
+
+  it('cancela uma reserva confirmada', async () => {
+    const user = userEvent.setup()
+    renderRoute('/app/reservations?tenant=shopping&role=driver')
+    await user.click(await screen.findByRole('button', { name: 'Cancelar reserva da vaga A-03' }))
+    expect(await screen.findByText('Reserva cancelada. A vaga A-03 foi liberada.')).toBeInTheDocument()
+    expect(within(linhaDa('A-03')).getByText('Cancelada')).toBeInTheDocument()
+    expect(cancelReservation).toHaveBeenCalledWith('shopping', '1')
+  })
+
+  it('exclui uma reserva cancelada', async () => {
+    const user = userEvent.setup()
+    renderRoute('/app/reservations?tenant=shopping&role=driver')
+    await user.click(await screen.findByRole('button', { name: 'Excluir reserva da vaga B-11' }))
+    await user.click(screen.getByRole('button', { name: 'Excluir' }))
+    expect(await screen.findByText('Reserva excluída.')).toBeInTheDocument()
+    expect(within(screen.getByRole('table')).queryByText('B-11')).not.toBeInTheDocument()
+    expect(deleteReservation).toHaveBeenCalledWith('shopping', '2')
+  })
+
+  it('mostra o erro da API ao tentar excluir uma reserva ativa', async () => {
+    deleteReservation.mockRejectedValueOnce(new Error('Cancele a reserva antes de excluir.'))
+    const user = userEvent.setup()
+    renderRoute('/app/reservations?tenant=shopping&role=driver')
+    await user.click(await screen.findByRole('button', { name: 'Excluir reserva da vaga A-03' }))
+    await user.click(screen.getByRole('button', { name: 'Excluir' }))
+    expect(await screen.findByText('Cancele a reserva antes de excluir.')).toBeInTheDocument()
+    expect(within(linhaDa('A-03')).getByText('Confirmada')).toBeInTheDocument()
+  })
+
+  it('ao trocar para um tenant sem reservation, o menu e a tela somem', async () => {
+    const user = userEvent.setup()
+    renderRoute('/app/reservations?tenant=shopping&role=driver')
+    expect(await screen.findByText('A-03')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Reservar/ })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('link', { name: /Trocar perfil/ }))
+    await user.click(screen.getByRole('button', { name: /Santa Clara/ }))
+    await user.click(screen.getByRole('button', { name: /Entrar como Motorista/ }))
+
+    expect(await screen.findByText(/Acesso acolhedor e sem demora/)).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Reservar/ })).not.toBeInTheDocument()
+    expect(listReservations).not.toHaveBeenCalledWith('hospital')
+  })
+
+  it('bloqueia a rota principal quando reservation=false', () => {
+    renderRoute('/app/reservations?tenant=hospital&role=driver')
+    expect(screen.getByText(/Reserva não está disponível para Hospital Santa Clara/)).toBeInTheDocument()
+    expect(listReservations).not.toHaveBeenCalled()
   })
 })

@@ -59,3 +59,18 @@ CREATE TABLE IF NOT EXISTS tarifas (
 
 -- No máximo UMA tarifa ativa por tenant: o próprio banco recusa uma segunda.
 CREATE UNIQUE INDEX IF NOT EXISTS uma_tarifa_ativa_por_tenant ON tarifas (tenant_id) WHERE ativa = 1;
+
+CREATE TABLE IF NOT EXISTS reservas (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id       TEXT    NOT NULL CHECK (tenant_id IN ('shopping', 'condominium', 'hospital', 'company')),
+  veiculo_id      INTEGER NOT NULL REFERENCES veiculos (id),
+  vaga_id         INTEGER NOT NULL REFERENCES vagas (id),
+  data            TEXT    NOT NULL,  -- AAAA-MM-DD
+  hora            TEXT    NOT NULL,  -- HH:MM
+  duracao_horas   INTEGER NOT NULL CHECK (duracao_horas > 0),
+  valor_estimado  REAL    NOT NULL DEFAULT 0,  -- calculado pela Strategy da tarifa ativa
+  status          TEXT    NOT NULL CHECK (status IN ('pendente', 'confirmada', 'cancelada', 'concluida'))
+);
+
+-- Uma vaga não pode ter duas reservas confirmadas ao mesmo tempo: o próprio banco recusa.
+CREATE UNIQUE INDEX IF NOT EXISTS uma_reserva_confirmada_por_vaga ON reservas (vaga_id) WHERE status = 'confirmada';

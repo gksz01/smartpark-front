@@ -1,7 +1,5 @@
-import { VarianteCondominio } from '../../src/domain/factories/variante/VarianteCondominio'
-import { VarianteEmpresa } from '../../src/domain/factories/variante/VarianteEmpresa'
-import { VarianteHospital } from '../../src/domain/factories/variante/VarianteHospital'
-import { VarianteShopping } from '../../src/domain/factories/variante/VarianteShopping'
+import { VARIANTE_POR_TENANT } from '../../src/domain/factories/variante/variantePorTenant'
+import { Reserva } from '../../src/domain/Reserva'
 import { configuracaoDaEstrategia } from '../../src/domain/strategies/tarifa/estrategiaPorTipo'
 import type { Banco } from '../database/conexao'
 
@@ -96,6 +94,25 @@ const TARIFAS_ALTERNATIVAS = [
   { tenant_id: 'hospital', nome: 'Diária de acompanhante', tipo_estrategia: 'DIARIA', valor: 30, valor_maximo_diario: null },
 ]
 
+/** AAAA-MM-DD de hoje deslocado em alguns dias (reservas de demonstração sempre perto de hoje). */
+function diaRelativo(dias: number): string {
+  const data = new Date()
+  data.setDate(data.getDate() + dias)
+  const mes = String(data.getMonth() + 1).padStart(2, '0')
+  const dia = String(data.getDate()).padStart(2, '0')
+  return `${data.getFullYear()}-${mes}-${dia}`
+}
+
+/**
+ * Reservas de demonstração: só no Shopping (único tenant com reservation=true).
+ * A confirmada usa a vaga A-03, que o seed de vagas já deixa como Reservada.
+ */
+const RESERVAS_INICIAIS = [
+  { tenant_id: 'shopping', placa: 'BRA2E19', codigo_vaga: 'A-03', data: diaRelativo(2), hora: '18:30', duracao_horas: 2, status: 'confirmada' },
+  { tenant_id: 'shopping', placa: 'BRA2E19', codigo_vaga: 'B-11', data: diaRelativo(1), hora: '10:00', duracao_horas: 4, status: 'cancelada' },
+  { tenant_id: 'shopping', placa: 'BRA2E19', codigo_vaga: 'B-14', data: diaRelativo(-3), hora: '14:00', duracao_horas: 1, status: 'concluida' },
+]
+
 export function popularVeiculos(db: Banco): void {
   const inserir = db.prepare(`
     INSERT INTO veiculos (tenant_id, apelido, placa, modelo, cor, unidade, tag_rfid)
@@ -134,8 +151,7 @@ export function popularTarifas(db: Banco): void {
     VALUES (@tenant_id, @nome, @tipo_estrategia, @valor, @valor_maximo_diario, @ativa)
   `)
 
-  const variantes = [new VarianteShopping(), new VarianteHospital(), new VarianteCondominio(), new VarianteEmpresa()]
-  for (const variante of variantes) {
+  for (const variante of Object.values(VARIANTE_POR_TENANT)) {
     if (!variante.possuiFeature('billing')) continue // só clientes com cobrança têm tarifas
     // FACTORY METHOD: a variante decide qual Strategy é a tarifa padrão (ativa)
     const tarifa = variante.criarTarifa('padrao')
@@ -152,15 +168,33 @@ export function popularTarifas(db: Banco): void {
   for (const tarifa of TARIFAS_ALTERNATIVAS) inserir.run({ ...tarifa, ativa: 0 })
 }
 
+export function popularReservas(db: Banco): void {
+  const inserir = db.prepare(`
+    INSERT INTO reservas (tenant_id, veiculo_id, vaga_id, data, hora, duracao_horas, valor_estimado, status)
+    VALUES (@tenant_id, @veiculo_id, @vaga_id, @data, @hora, @duracao_horas, @valor_estimado, @status)
+  `)
+  for (const item of RESERVAS_INICIAIS) {
+    const veiculo = db.prepare('SELECT id FROM veiculos WHERE tenant_id = ? AND placa = ?').get(item.tenant_id, item.placa) as { id: number } | undefined
+    const vaga = db.prepare('SELECT id FROM vagas WHERE tenant_id = ? AND codigo = ?').get(item.tenant_id, item.codigo_vaga) as { id: number } | undefined
+    if (!veiculo || !vaga) continue // banco antigo sem esse veículo ou vaga
+
+    // A estimativa também passa por Reserva → Tarifa → Strategy (tarifa padrão da variante)
+    const reserva = new Reserva('', String(veiculo.id), item.codigo_vaga, item.data, item.hora, item.duracao_horas)
+    const valorEstimado = reserva.calcularEstimativa(VARIANTE_POR_TENANT.shopping.criarTarifa('seed'))
+    inserir.run({ ...item, veiculo_id: veiculo.id, vaga_id: vaga.id, valor_estimado: valorEstimado })
+  }
+}
+
 export function popularBanco(db: Banco): void {
   popularVeiculos(db)
   popularUsuarios(db)
   popularVagas(db)
   popularAcessos(db)
   popularTarifas(db)
+  popularReservas(db)
 }
 
-function tabelaVazia(db: Banco, tabela: 'veiculos' | 'usuarios' | 'vagas' | 'acessos' | 'tarifas'): boolean {
+function tabelaVazia(db: Banco, tabela: 'veiculos' | 'usuarios' | 'vagas' | 'acessos' | 'tarifas' | 'reservas'): boolean {
   const { total } = db.prepare(`SELECT COUNT(*) AS total FROM ${tabela}`).get() as { total: number }
   return total === 0
 }
@@ -176,18 +210,20 @@ export function popularTabelasVazias(db: Banco): string[] {
   if (tabelaVazia(db, 'vagas')) { popularVagas(db); populadas.push('vagas') }
   if (tabelaVazia(db, 'acessos')) { popularAcessos(db); populadas.push('acessos') }
   if (tabelaVazia(db, 'tarifas')) { popularTarifas(db); populadas.push('tarifas') }
+  if (tabelaVazia(db, 'reservas')) { popularReservas(db); populadas.push('reservas') }
   return populadas
 }
 
 /** Apaga todos os dados e insere novamente os registros de demonstração. */
 export function resetarBanco(db: Banco): void {
   const resetar = db.transaction(() => {
+    db.exec('DELETE FROM reservas') // primeiro: aponta para veiculos e vagas (foreign keys)
     db.exec('DELETE FROM veiculos')
     db.exec('DELETE FROM usuarios')
     db.exec('DELETE FROM vagas')
     db.exec('DELETE FROM acessos')
     db.exec('DELETE FROM tarifas')
-    db.exec("DELETE FROM sqlite_sequence WHERE name IN ('veiculos', 'usuarios', 'vagas', 'acessos', 'tarifas')") // reinicia os ids em 1
+    db.exec("DELETE FROM sqlite_sequence WHERE name IN ('veiculos', 'usuarios', 'vagas', 'acessos', 'tarifas', 'reservas')") // reinicia os ids em 1
     popularBanco(db)
   })
   resetar()
