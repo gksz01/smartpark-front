@@ -1,4 +1,4 @@
-import { Activity, Car, CircleParking, CreditCard, FileCog, HeartHandshake, LayoutDashboard, LogOut, Menu, RotateCcw, Search, Settings2, TicketCheck, UsersRound, X } from 'lucide-react'
+import { Activity, Car, CircleDollarSign, CircleParking, CreditCard, FileCog, HeartHandshake, LayoutDashboard, LogOut, Menu, RotateCcw, Search, Settings2, TicketCheck, UsersRound, X } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { useTenant } from '../core/app-context'
@@ -22,6 +22,7 @@ const adminNav: NavigationItem[] = [
   { to: '/admin/spaces', label: 'Vagas e setores', icon: CircleParking, permission: 'spaces' },
   { to: '/admin/access', label: 'Entradas e saídas', icon: Activity, permission: 'access' },
   { to: '/admin/users', label: 'Pessoas', icon: UsersRound, permission: 'users' },
+  { to: '/admin/tariffs', label: 'Tarifas', icon: CircleDollarSign, feature: 'billing', permission: 'configuration' },
   { to: '/admin/configuration', label: 'Configuração', icon: FileCog, permission: 'configuration' },
   { to: '/admin/medical-agreement', label: 'Convênios', icon: HeartHandshake, feature: 'medicalAgreement', permission: 'medicalAgreement' },
 ]

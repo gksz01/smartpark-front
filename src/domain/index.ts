@@ -17,6 +17,7 @@ export { TarifaComConvenio } from './strategies/tarifa/TarifaComConvenio'
 export { TarifaFixaDiaria } from './strategies/tarifa/TarifaFixaDiaria'
 export { TarifaIsenta } from './strategies/tarifa/TarifaIsenta'
 export { TarifaPorHora } from './strategies/tarifa/TarifaPorHora'
+export { CRIAR_ESTRATEGIA, configuracaoDaEstrategia, type ConfiguracaoTarifa, type TipoEstrategiaTarifa } from './strategies/tarifa/estrategiaPorTipo'
 
 // Strategy — Exemplo 2: pagamento
 export type { EstrategiaPagamento, FormaPagamento, ResultadoPagamento } from './strategies/pagamento/EstrategiaPagamento'

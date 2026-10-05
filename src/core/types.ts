@@ -28,6 +28,9 @@ export type AccessStatus = 'Liberado' | 'Pendente' | 'Negado'
 export type SpaceType = 'Comum' | 'PCD' | 'Elétrico' | 'Nominal' | 'Restrito' | 'Prioritária'
 export type SpaceStatus = 'Livre' | 'Ocupada' | 'Bloqueada' | 'Reservada'
 
+/** Algoritmos de tarifa que podem ser gravados (cada um corresponde a uma Strategy). */
+export type TariffStrategyType = 'POR_HORA' | 'DIARIA' | 'ISENTA'
+
 /** Tipos de pessoa cadastráveis. Cada tenant escolhe os seus em personTypes. */
 export type PersonType = 'motorista' | 'morador' | 'visitante' | 'funcionario' | 'paciente' | 'acompanhante'
 
@@ -104,6 +107,18 @@ export interface User {
   document: string
   type: PersonType
   role: Role
+  active: boolean
+}
+
+/** Tarifa cadastrada no tenant (tabela tarifas). */
+export interface Tariff {
+  id: string
+  name: string
+  strategy: TariffStrategyType
+  /** Valor da hora (POR_HORA) ou da diária (DIARIA); 0 na ISENTA. */
+  value: number
+  /** Teto diário, usado só na POR_HORA. */
+  maxDaily: number | null
   active: boolean
 }
 

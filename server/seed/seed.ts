@@ -1,3 +1,8 @@
+import { VarianteCondominio } from '../../src/domain/factories/variante/VarianteCondominio'
+import { VarianteEmpresa } from '../../src/domain/factories/variante/VarianteEmpresa'
+import { VarianteHospital } from '../../src/domain/factories/variante/VarianteHospital'
+import { VarianteShopping } from '../../src/domain/factories/variante/VarianteShopping'
+import { configuracaoDaEstrategia } from '../../src/domain/strategies/tarifa/estrategiaPorTipo'
 import type { Banco } from '../database/conexao'
 
 /** Veículos de demonstração. A mesma placa pode existir em clientes diferentes. */
@@ -84,6 +89,13 @@ const ACESSOS_INICIAIS = [
   { tenant_id: 'company', pessoa: 'Técnico de manutenção', identificador: 'RF-VISITA-01', metodo: 'RFID', direcao: 'Entrada', status: 'Liberado', manual: 1, motivo_negacao: null, horario: hojeAs(10, 30) },
 ]
 
+/** Tarifas alternativas (inativas) para demonstrar a troca de Strategy. A padrão vem da variante. */
+const TARIFAS_ALTERNATIVAS = [
+  { tenant_id: 'shopping', nome: 'Diária promocional', tipo_estrategia: 'DIARIA', valor: 40, valor_maximo_diario: null },
+  { tenant_id: 'shopping', nome: 'Cortesia para lojistas', tipo_estrategia: 'ISENTA', valor: 0, valor_maximo_diario: null },
+  { tenant_id: 'hospital', nome: 'Diária de acompanhante', tipo_estrategia: 'DIARIA', valor: 30, valor_maximo_diario: null },
+]
+
 export function popularVeiculos(db: Banco): void {
   const inserir = db.prepare(`
     INSERT INTO veiculos (tenant_id, apelido, placa, modelo, cor, unidade, tag_rfid)
@@ -116,14 +128,39 @@ export function popularAcessos(db: Banco): void {
   for (const acesso of ACESSOS_INICIAIS) inserir.run(acesso)
 }
 
+export function popularTarifas(db: Banco): void {
+  const inserir = db.prepare(`
+    INSERT INTO tarifas (tenant_id, nome, tipo_estrategia, valor, valor_maximo_diario, ativa)
+    VALUES (@tenant_id, @nome, @tipo_estrategia, @valor, @valor_maximo_diario, @ativa)
+  `)
+
+  const variantes = [new VarianteShopping(), new VarianteHospital(), new VarianteCondominio(), new VarianteEmpresa()]
+  for (const variante of variantes) {
+    if (!variante.possuiFeature('billing')) continue // só clientes com cobrança têm tarifas
+    // FACTORY METHOD: a variante decide qual Strategy é a tarifa padrão (ativa)
+    const tarifa = variante.criarTarifa('padrao')
+    const configuracao = configuracaoDaEstrategia(tarifa.estrategia)
+    inserir.run({
+      tenant_id: variante.tenantId,
+      nome: tarifa.nome,
+      tipo_estrategia: configuracao.tipo,
+      valor: configuracao.valor,
+      valor_maximo_diario: configuracao.valorMaximoDiario,
+      ativa: 1,
+    })
+  }
+  for (const tarifa of TARIFAS_ALTERNATIVAS) inserir.run({ ...tarifa, ativa: 0 })
+}
+
 export function popularBanco(db: Banco): void {
   popularVeiculos(db)
   popularUsuarios(db)
   popularVagas(db)
   popularAcessos(db)
+  popularTarifas(db)
 }
 
-function tabelaVazia(db: Banco, tabela: 'veiculos' | 'usuarios' | 'vagas' | 'acessos'): boolean {
+function tabelaVazia(db: Banco, tabela: 'veiculos' | 'usuarios' | 'vagas' | 'acessos' | 'tarifas'): boolean {
   const { total } = db.prepare(`SELECT COUNT(*) AS total FROM ${tabela}`).get() as { total: number }
   return total === 0
 }
@@ -138,6 +175,7 @@ export function popularTabelasVazias(db: Banco): string[] {
   if (tabelaVazia(db, 'usuarios')) { popularUsuarios(db); populadas.push('usuarios') }
   if (tabelaVazia(db, 'vagas')) { popularVagas(db); populadas.push('vagas') }
   if (tabelaVazia(db, 'acessos')) { popularAcessos(db); populadas.push('acessos') }
+  if (tabelaVazia(db, 'tarifas')) { popularTarifas(db); populadas.push('tarifas') }
   return populadas
 }
 
@@ -148,7 +186,8 @@ export function resetarBanco(db: Banco): void {
     db.exec('DELETE FROM usuarios')
     db.exec('DELETE FROM vagas')
     db.exec('DELETE FROM acessos')
-    db.exec("DELETE FROM sqlite_sequence WHERE name IN ('veiculos', 'usuarios', 'vagas', 'acessos')") // reinicia os ids em 1
+    db.exec('DELETE FROM tarifas')
+    db.exec("DELETE FROM sqlite_sequence WHERE name IN ('veiculos', 'usuarios', 'vagas', 'acessos', 'tarifas')") // reinicia os ids em 1
     popularBanco(db)
   })
   resetar()

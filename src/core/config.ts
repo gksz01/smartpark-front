@@ -1,4 +1,4 @@
-import type { AccessDirection, AccessMethod, AccessStatus, DashboardMetricId, Feature, Permission, PersonType, Role, SpaceStatus, TenantConfig, TenantId } from './types'
+import type { AccessDirection, AccessMethod, AccessStatus, DashboardMetricId, Feature, Permission, PersonType, Role, SpaceStatus, TariffStrategyType, TenantConfig, TenantId } from './types'
 
 export const ROLE_LABELS: Record<Role, string> = {
   driver: 'Motorista',
@@ -32,6 +32,13 @@ export const PERSON_TYPE_LABELS: Record<PersonType, string> = {
 }
 
 export const SPACE_STATUSES: SpaceStatus[] = ['Livre', 'Ocupada', 'Bloqueada', 'Reservada']
+
+export const TARIFF_STRATEGY_LABELS: Record<TariffStrategyType, string> = {
+  POR_HORA: 'Por hora',
+  DIARIA: 'Diária fixa',
+  ISENTA: 'Isenta',
+}
+export const TARIFF_STRATEGIES = Object.keys(TARIFF_STRATEGY_LABELS) as TariffStrategyType[]
 
 export const ACCESS_LABELS = {
   LPR: 'Leitura de placa (LPR)',

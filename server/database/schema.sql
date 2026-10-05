@@ -46,3 +46,16 @@ CREATE TABLE IF NOT EXISTS acessos (
   motivo_negacao  TEXT,
   horario         TEXT    NOT NULL   -- data e hora em ISO 8601
 );
+
+CREATE TABLE IF NOT EXISTS tarifas (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id            TEXT    NOT NULL CHECK (tenant_id IN ('shopping', 'condominium', 'hospital', 'company')),
+  nome                 TEXT    NOT NULL,
+  tipo_estrategia      TEXT    NOT NULL CHECK (tipo_estrategia IN ('POR_HORA', 'DIARIA', 'ISENTA')),  -- qual Strategy usar
+  valor                REAL    NOT NULL DEFAULT 0 CHECK (valor >= 0),  -- valor da hora ou da diária
+  valor_maximo_diario  REAL,                                           -- teto diário (só POR_HORA)
+  ativa                INTEGER NOT NULL DEFAULT 0 CHECK (ativa IN (0, 1))
+);
+
+-- No máximo UMA tarifa ativa por tenant: o próprio banco recusa uma segunda.
+CREATE UNIQUE INDEX IF NOT EXISTS uma_tarifa_ativa_por_tenant ON tarifas (tenant_id) WHERE ativa = 1;

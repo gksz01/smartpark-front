@@ -6,6 +6,7 @@ import App from './App'
 import { TenantProvider, TenantThemeProvider } from './core/app-context'
 import { createAccess, deleteAccess, listAccess, updateAccess } from './test/fakeAccessApi'
 import { createSpace, deleteSpace, listSpaces, updateSpace } from './test/fakeSpacesApi'
+import { createTariff, deleteTariff, listTariffs, updateTariff } from './test/fakeTariffsApi'
 import { createUser, deleteUser, listUsers, updateUser } from './test/fakeUsersApi'
 import { createVehicle, deleteVehicle, listVehicles, updateVehicle } from './test/fakeVehiclesApi'
 
@@ -39,6 +40,7 @@ const routes = [
   ['/admin/spaces?tenant=shopping&role=admin', 'Vagas e setores'],
   ['/admin/access?tenant=shopping&role=admin', 'Entradas e saídas'],
   ['/admin/users?tenant=shopping&role=admin', 'Pessoas'],
+  ['/admin/tariffs?tenant=shopping&role=admin', 'Tarifas'],
   ['/admin/configuration?tenant=shopping&role=admin', 'Módulos e personalização'],
   ['/admin/medical-agreement?tenant=hospital&role=admin', 'Convênio médico'],
 ] as const
@@ -437,5 +439,127 @@ describe('acessos (entradas e saídas)', () => {
     renderRoute('/admin/dashboard?tenant=hospital&role=admin')
     expect(await screen.findByText('Helena Moreira')).toBeInTheDocument()
     expect(listAccess).toHaveBeenCalledWith('hospital')
+  })
+})
+
+describe('tarifas', () => {
+  const linhaDa = (nome: string) => screen.getByText(nome).closest('tr') as HTMLElement
+
+  it('lista as tarifas com a simulação de 3h feita pela Strategy', async () => {
+    renderRoute('/admin/tariffs?tenant=shopping&role=admin')
+    expect(await screen.findByText('Tarifa Aurora')).toBeInTheDocument()
+    expect(within(linhaDa('Tarifa Aurora')).getByText('R$ 36,00')).toBeInTheDocument() // 3 × R$ 12
+    expect(within(linhaDa('Tarifa Aurora')).getByText('R$ 12,00/hora (máx. R$ 60,00/dia)')).toBeInTheDocument()
+    expect(within(linhaDa('Diária promocional')).getByText('R$ 40,00')).toBeInTheDocument() // 1 diária
+    expect(within(linhaDa('Cortesia para lojistas')).getByText('R$ 0,00')).toBeInTheDocument() // isenta
+    expect(within(linhaDa('Tarifa Aurora')).getByText('Ativa')).toBeInTheDocument()
+    expect(listTariffs).toHaveBeenCalledWith('shopping')
+  })
+
+  it('cadastra uma tarifa por hora com teto', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/tariffs?tenant=shopping&role=admin')
+    await user.click(screen.getByRole('button', { name: /Nova tarifa/ }))
+    await user.type(screen.getByLabelText('Nome'), 'Noturna')
+    await user.type(screen.getByLabelText('Valor da hora (R$)'), '8')
+    await user.type(screen.getByLabelText(/Teto diário/), '30')
+    await user.click(screen.getByRole('button', { name: 'Salvar tarifa' }))
+    expect(await screen.findByText('Tarifa Noturna cadastrada com sucesso.')).toBeInTheDocument()
+    expect(within(linhaDa('Noturna')).getByText('R$ 24,00')).toBeInTheDocument()
+    expect(createTariff).toHaveBeenCalledWith('shopping', { name: 'Noturna', strategy: 'POR_HORA', value: 8, maxDaily: 30, active: false })
+  })
+
+  it('o formulário mostra só os campos de cada Strategy', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/tariffs?tenant=shopping&role=admin')
+    await user.click(screen.getByRole('button', { name: /Nova tarifa/ }))
+    expect(screen.getByLabelText(/Teto diário/)).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Tipo de cálculo'), 'DIARIA')
+    expect(screen.getByLabelText('Valor da diária (R$)')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Teto diário/)).not.toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Tipo de cálculo'), 'ISENTA')
+    expect(screen.queryByLabelText(/Valor/)).not.toBeInTheDocument()
+  })
+
+  it('edita uma tarifa trocando a Strategy', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/tariffs?tenant=shopping&role=admin')
+    await user.click(await screen.findByRole('button', { name: 'Editar Diária promocional' }))
+    await user.selectOptions(screen.getByLabelText('Tipo de cálculo'), 'POR_HORA')
+    await user.clear(screen.getByLabelText('Valor da hora (R$)'))
+    await user.type(screen.getByLabelText('Valor da hora (R$)'), '5')
+    await user.click(screen.getByRole('button', { name: 'Salvar tarifa' }))
+    expect(await screen.findByText('Tarifa Diária promocional atualizada com sucesso.')).toBeInTheDocument()
+    expect(within(linhaDa('Diária promocional')).getByText('R$ 15,00')).toBeInTheDocument()
+    expect(updateTariff).toHaveBeenCalledWith('shopping', '3', { name: 'Diária promocional', strategy: 'POR_HORA', value: 5, maxDaily: null, active: false })
+  })
+
+  it('ativar uma tarifa desativa a anterior', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/tariffs?tenant=shopping&role=admin')
+    await user.click(await screen.findByRole('button', { name: 'Ativar Diária promocional' }))
+    expect(await screen.findByText('Tarifa Diária promocional ativada. A anterior foi desativada.')).toBeInTheDocument()
+    expect(within(linhaDa('Diária promocional')).getByText('Ativa')).toBeInTheDocument()
+    expect(within(linhaDa('Tarifa Aurora')).getByText('Inativa')).toBeInTheDocument()
+    expect(updateTariff).toHaveBeenCalledWith('shopping', '3', expect.objectContaining({ active: true }))
+  })
+
+  it('exclui uma tarifa inativa', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/tariffs?tenant=shopping&role=admin')
+    await user.click(await screen.findByRole('button', { name: 'Excluir Cortesia para lojistas' }))
+    await user.click(screen.getByRole('button', { name: 'Excluir' }))
+    expect(await screen.findByText('Tarifa excluída.')).toBeInTheDocument()
+    expect(screen.queryByText('Cortesia para lojistas')).not.toBeInTheDocument()
+    expect(deleteTariff).toHaveBeenCalledWith('shopping', '4')
+  })
+
+  it('mostra o erro da API ao excluir a tarifa ativa', async () => {
+    deleteTariff.mockRejectedValueOnce(new Error('A tarifa Tarifa Aurora está ativa. Ative outra tarifa ou desative esta antes de excluir.'))
+    const user = userEvent.setup()
+    renderRoute('/admin/tariffs?tenant=shopping&role=admin')
+    await user.click(await screen.findByRole('button', { name: 'Excluir Tarifa Aurora' }))
+    await user.click(screen.getByRole('button', { name: 'Excluir' }))
+    expect(await screen.findByText(/está ativa/)).toBeInTheDocument()
+    expect(screen.getByText('Tarifa Aurora')).toBeInTheDocument()
+  })
+
+  it('ao trocar de tenant, carrega as tarifas do novo tenant', async () => {
+    const user = userEvent.setup()
+    renderRoute('/admin/tariffs?tenant=shopping&role=admin')
+    expect(await screen.findByText('Tarifa Aurora')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('link', { name: /Trocar contexto/ }))
+    await user.click(screen.getByRole('button', { name: /Santa Clara/ }))
+    await user.click(screen.getByRole('button', { name: /Entrar como Administrador/ }))
+    await user.click(await screen.findByRole('link', { name: /Tarifas/ }))
+
+    expect(await screen.findByText('Tarifa Santa Clara')).toBeInTheDocument()
+    expect(screen.queryByText('Tarifa Aurora')).not.toBeInTheDocument()
+    expect(listTariffs).toHaveBeenLastCalledWith('hospital')
+  })
+
+  it('Shopping e Hospital acessam; Condomínio e Empresa são bloqueados por billing', () => {
+    renderRoute('/admin/tariffs?tenant=hospital&role=admin')
+    expect(screen.getByRole('heading', { name: 'Tarifas' })).toBeInTheDocument()
+    cleanup()
+
+    renderRoute('/admin/tariffs?tenant=condominium&role=admin')
+    expect(screen.getByText(/Cobrança individual não está disponível para Residencial Horizonte/)).toBeInTheDocument()
+    cleanup()
+
+    renderRoute('/admin/tariffs?tenant=company&role=admin')
+    expect(screen.getByText(/Cobrança individual não está disponível para Nexora Tecnologia/)).toBeInTheDocument()
+    expect(listTariffs).not.toHaveBeenCalledWith('condominium')
+    expect(listTariffs).not.toHaveBeenCalledWith('company')
+  })
+
+  it('o menu só mostra Tarifas quando billing está ligado', () => {
+    renderRoute('/admin/dashboard?tenant=shopping&role=admin')
+    expect(screen.getByRole('link', { name: /Tarifas/ })).toBeInTheDocument()
+    cleanup()
+
+    renderRoute('/admin/dashboard?tenant=condominium&role=admin')
+    expect(screen.queryByRole('link', { name: /Tarifas/ })).not.toBeInTheDocument()
   })
 })
