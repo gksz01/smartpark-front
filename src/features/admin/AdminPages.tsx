@@ -3,8 +3,9 @@ import { useState, type FormEvent } from 'react'
 import { useTenant } from '../../core/app-context'
 import { ACCESS_DIRECTIONS, ACCESS_IDENTIFIERS, ACCESS_LABELS, ACCESS_STATUSES, BENEFIT_TYPE_LABELS, BENEFIT_TYPES, FEATURE_LABELS, METRIC_LABELS, METRIC_VALUES, ROLE_LABELS, SPACE_STATUSES } from '../../core/config'
 import { RoleGate } from '../../core/gates'
-import type { AccessDirection, AccessRecord, AccessStatus, Agreement, AttendanceCheck, BenefitType, DashboardMetricId, ParkingSpace, SpaceStatus, SpaceType } from '../../core/types'
+import type { AccessDirection, AccessRecord, AccessStatus, Agreement, AttendanceCheck, BenefitType, DashboardMetricId, ParkingSpace, TenantConfig } from '../../core/types'
 import { Convenio } from '../../domain/Convenio'
+import { ACTIVE_CHOICES, FormFields, type FieldConfig } from '../../shared/crud/FormFields'
 import { FormModal } from '../../shared/crud/FormModal'
 import { useCrudForm } from '../../shared/crud/useCrudForm'
 import { useTenantData } from '../../shared/crud/useTenantData'
@@ -33,6 +34,16 @@ export function DashboardPage() {
 }
 
 const SPACE_TONE = { Livre: 'success', Ocupada: 'info', Bloqueada: 'danger', Reservada: 'warning' } as const
+
+/** Campos do formulário de vagas: os tipos oferecidos vêm de spaceTypes do tenant (TENANTS). */
+function spaceFormFields(tenant: TenantConfig): FieldConfig<SpaceInput>[] {
+  return [
+    { name: 'code', label: 'Código', type: 'text', placeholder: 'Ex.: A-05' },
+    { name: 'sector', label: 'Setor', type: 'text', placeholder: 'Ex.: A' },
+    { name: 'type', label: 'Tipo', type: 'select', options: tenant.spaceTypes },
+    { name: 'status', label: 'Status', type: 'select', options: SPACE_STATUSES },
+  ]
+}
 
 export function SpacesPage() {
   const { tenant } = useTenant()
@@ -134,22 +145,7 @@ export function SpacesPage() {
 
       {crud.formOpen && (
         <FormModal id="space-form" eyebrow="Cadastro de vagas" title={crud.editing ? `Editar vaga ${crud.editing.code}` : 'Nova vaga'} error={error} submitLabel="Salvar vaga" onSubmit={crud.submit} onClose={crud.close}>
-          <FormField label="Código">
-            <input required value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} placeholder="Ex.: A-05" />
-          </FormField>
-          <FormField label="Setor">
-            <input required value={form.sector} onChange={(event) => setForm({ ...form, sector: event.target.value })} placeholder="Ex.: A" />
-          </FormField>
-          <FormField label="Tipo">
-            <select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as SpaceType })}>
-              {tenant.spaceTypes.map((type) => <option key={type}>{type}</option>)}
-            </select>
-          </FormField>
-          <FormField label="Status">
-            <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as SpaceStatus })}>
-              {SPACE_STATUSES.map((item) => <option key={item}>{item}</option>)}
-            </select>
-          </FormField>
+          <FormFields fields={spaceFormFields(tenant)} form={form} onChange={setForm} />
         </FormModal>
       )}
 
@@ -299,6 +295,17 @@ const MEDICAL_STEPS = ['Atendimento', 'Localização', 'Elegibilidade', 'Benefí
 const EMPTY_AGREEMENT_FORM = { name: '', benefitType: 'isencao' as BenefitType, benefitValue: '', active: true }
 const BENEFIT_VALUE_LABELS: Record<BenefitType, string> = { isencao: '', percentual: 'Percentual de desconto (%)', horasGratis: 'Horas grátis' }
 
+/** Campos do formulário de convênios: o valor só aparece para percentual e horas grátis. */
+const AGREEMENT_FIELDS: FieldConfig<typeof EMPTY_AGREEMENT_FORM>[] = [
+  { name: 'name', label: 'Nome', type: 'text', placeholder: 'Ex.: Saúde Plena' },
+  { name: 'benefitType', label: 'Tipo de benefício', type: 'select', options: BENEFIT_TYPES.map((type) => ({ value: type, label: BENEFIT_TYPE_LABELS[type] })) },
+  {
+    name: 'benefitValue', label: (form) => BENEFIT_VALUE_LABELS[form.benefitType], type: 'number', visible: (form) => form.benefitType !== 'isencao',
+    attributes: (form) => ({ min: '1', max: form.benefitType === 'percentual' ? 100 : undefined, step: '1' }),
+  },
+  { name: 'active', label: 'Situação', type: 'boolean', choices: ACTIVE_CHOICES },
+]
+
 /** A descrição do benefício vem da classe de domínio Convenio. */
 function benefitDescription(agreement: Agreement): string {
   return new Convenio(agreement.id, agreement.name, agreement.benefitType, agreement.benefitValue, agreement.active).descricaoBeneficio()
@@ -443,25 +450,7 @@ export function MedicalAgreementPage() {
 
       {crud.formOpen && (
         <FormModal id="agreement-form" eyebrow="Cadastro de convênios" title={crud.editing ? 'Editar convênio' : 'Novo convênio'} error={error} submitLabel="Salvar convênio" onSubmit={crud.submit} onClose={crud.close}>
-          <FormField label="Nome">
-            <input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ex.: Saúde Plena" />
-          </FormField>
-          <FormField label="Tipo de benefício">
-            <select value={form.benefitType} onChange={(event) => setForm({ ...form, benefitType: event.target.value as BenefitType })}>
-              {BENEFIT_TYPES.map((type) => <option key={type} value={type}>{BENEFIT_TYPE_LABELS[type]}</option>)}
-            </select>
-          </FormField>
-          {form.benefitType !== 'isencao' && (
-            <FormField label={BENEFIT_VALUE_LABELS[form.benefitType]}>
-              <input required type="number" min="1" max={form.benefitType === 'percentual' ? 100 : undefined} step="1" value={form.benefitValue} onChange={(event) => setForm({ ...form, benefitValue: event.target.value })} />
-            </FormField>
-          )}
-          <FormField label="Situação">
-            <select value={form.active ? 'ativo' : 'inativo'} onChange={(event) => setForm({ ...form, active: event.target.value === 'ativo' })}>
-              <option value="ativo">Ativo</option>
-              <option value="inativo">Inativo</option>
-            </select>
-          </FormField>
+          <FormFields fields={AGREEMENT_FIELDS} form={form} onChange={setForm} />
         </FormModal>
       )}
 

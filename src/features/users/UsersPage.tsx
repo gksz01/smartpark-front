@@ -2,14 +2,26 @@ import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { useTenant } from '../../core/app-context'
 import { PERSON_TYPE_LABELS, ROLE_LABELS } from '../../core/config'
-import type { PersonType, Role, User } from '../../core/types'
+import type { PersonType, TenantConfig, User } from '../../core/types'
 import { Usuario } from '../../domain/Usuario'
 import { createUser, deleteUser, listUsers, updateUser, type UserInput } from '../../services/usersApi'
+import { ACTIVE_CHOICES, FormFields, type FieldConfig } from '../../shared/crud/FormFields'
 import { FormModal } from '../../shared/crud/FormModal'
 import { useCrudForm } from '../../shared/crud/useCrudForm'
 import { useTenantData } from '../../shared/crud/useTenantData'
 import { RowActions } from '../../shared/crud/RowActions'
-import { Alert, Button, Card, ConfirmDialog, DataTable, FormField, PageHeader, StatusBadge, VariationInfo, type Column } from '../../shared/ui'
+import { Alert, Button, Card, ConfirmDialog, DataTable, PageHeader, StatusBadge, VariationInfo, type Column } from '../../shared/ui'
+
+/** Campos do formulário de pessoas: tipos e perfis vêm do tenant (personTypes e allowedRoles em TENANTS). */
+function userFormFields(tenant: TenantConfig): FieldConfig<UserInput>[] {
+  return [
+    { name: 'name', label: 'Nome', type: 'text', placeholder: 'Nome completo' },
+    { name: 'document', label: 'Documento', type: 'text', placeholder: 'CPF ou RG' },
+    { name: 'type', label: 'Tipo', type: 'select', options: tenant.personTypes.map((type) => ({ value: type, label: PERSON_TYPE_LABELS[type] })) },
+    { name: 'role', label: 'Perfil', type: 'select', options: tenant.allowedRoles.map((role) => ({ value: role, label: ROLE_LABELS[role] })) },
+    { name: 'active', label: 'Situação', type: 'boolean', choices: ACTIVE_CHOICES },
+  ]
+}
 
 export function UsersPage() {
   const { tenant } = useTenant()
@@ -87,28 +99,7 @@ export function UsersPage() {
 
       {crud.formOpen && (
         <FormModal id="user-form" eyebrow="Cadastro de pessoas" title={crud.editing ? 'Editar pessoa' : 'Nova pessoa'} error={error} submitLabel="Salvar pessoa" onSubmit={crud.submit} onClose={crud.close}>
-          <FormField label="Nome">
-            <input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Nome completo" />
-          </FormField>
-          <FormField label="Documento">
-            <input required value={form.document} onChange={(event) => setForm({ ...form, document: event.target.value })} placeholder="CPF ou RG" />
-          </FormField>
-          <FormField label="Tipo">
-            <select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as PersonType })}>
-              {tenant.personTypes.map((type) => <option key={type} value={type}>{PERSON_TYPE_LABELS[type]}</option>)}
-            </select>
-          </FormField>
-          <FormField label="Perfil">
-            <select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as Role })}>
-              {tenant.allowedRoles.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
-            </select>
-          </FormField>
-          <FormField label="Situação">
-            <select value={form.active ? 'ativo' : 'inativo'} onChange={(event) => setForm({ ...form, active: event.target.value === 'ativo' })}>
-              <option value="ativo">Ativo</option>
-              <option value="inativo">Inativo</option>
-            </select>
-          </FormField>
+          <FormFields fields={userFormFields(tenant)} form={form} onChange={setForm} />
         </FormModal>
       )}
 

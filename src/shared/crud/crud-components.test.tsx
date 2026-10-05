@@ -48,3 +48,27 @@ describe('componentes reutilizáveis de CRUD', () => {
     expect(onChange).toHaveBeenCalledWith('B')
   })
 })
+
+describe('FormFields (formulário declarativo)', () => {
+  type Form = { name: string; kind: string; value: string; active: boolean }
+  const fields: import('./FormFields').FieldConfig<Form>[] = [
+    { name: 'name', label: 'Nome', type: 'text', placeholder: 'Nome completo' },
+    { name: 'kind', label: 'Tipo', type: 'select', options: [{ value: 'a', label: 'Tipo A' }, { value: 'b', label: 'Tipo B' }] },
+    { name: 'value', label: (form) => (form.kind === 'a' ? 'Valor A' : 'Valor B'), type: 'number', visible: (form) => form.kind !== 'b' },
+    { name: 'active', label: 'Situação', type: 'boolean', choices: [{ key: 'ativo', label: 'Ativo', value: true }, { key: 'inativo', label: 'Inativo', value: false }] },
+  ]
+
+  it('monta os campos, aplica rótulo e visibilidade dependentes do formulário e devolve o form atualizado', async () => {
+    const { FormFields } = await import('./FormFields')
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const { rerender } = render(<FormFields fields={fields} form={{ name: '', kind: 'a', value: '', active: true }} onChange={onChange} />)
+    expect(screen.getByLabelText('Nome')).toBeRequired()
+    expect(screen.getByLabelText('Valor A')).toHaveAttribute('type', 'number')
+    await user.selectOptions(screen.getByLabelText('Situação'), 'inativo')
+    expect(onChange).toHaveBeenLastCalledWith({ name: '', kind: 'a', value: '', active: false })
+
+    rerender(<FormFields fields={fields} form={{ name: '', kind: 'b', value: '', active: true }} onChange={onChange} />)
+    expect(screen.queryByLabelText(/Valor/)).not.toBeInTheDocument()
+  })
+})

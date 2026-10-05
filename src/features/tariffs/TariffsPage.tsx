@@ -5,11 +5,12 @@ import type { Tariff, TariffStrategyType } from '../../core/types'
 import { CRIAR_ESTRATEGIA } from '../../domain/strategies/tarifa/estrategiaPorTipo'
 import { Tarifa } from '../../domain/Tarifa'
 import { createTariff, deleteTariff, listTariffs, updateTariff, type TariffInput } from '../../services/tariffsApi'
+import { FormFields, type FieldConfig } from '../../shared/crud/FormFields'
 import { FormModal } from '../../shared/crud/FormModal'
 import { useCrudForm } from '../../shared/crud/useCrudForm'
 import { useTenantData } from '../../shared/crud/useTenantData'
 import { RowActions } from '../../shared/crud/RowActions'
-import { Alert, Button, Card, ConfirmDialog, DataTable, FormField, PageHeader, StatusBadge, VariationInfo, type Column } from '../../shared/ui'
+import { Alert, Button, Card, ConfirmDialog, DataTable, PageHeader, StatusBadge, VariationInfo, type Column } from '../../shared/ui'
 import { formatarMoeda } from '../../domain/formatacao'
 
 const EMPTY_FORM = { name: '', strategy: 'POR_HORA' as TariffStrategyType, value: '', maxDaily: '', active: false }
@@ -19,6 +20,15 @@ const VALUE_LABELS: Record<TariffStrategyType, string> = {
   DIARIA: 'Valor da diária (R$)',
   ISENTA: '',
 }
+
+/** Campos do formulário: só o que cada tipo de cálculo usa (o cálculo em si fica na Strategy). */
+const TARIFF_FIELDS: FieldConfig<typeof EMPTY_FORM>[] = [
+  { name: 'name', label: 'Nome', type: 'text', placeholder: 'Ex.: Tarifa padrão' },
+  { name: 'strategy', label: 'Tipo de cálculo', type: 'select', options: TARIFF_STRATEGIES.map((strategy) => ({ value: strategy, label: TARIFF_STRATEGY_LABELS[strategy] })) },
+  { name: 'value', label: (form) => VALUE_LABELS[form.strategy], type: 'number', visible: (form) => form.strategy !== 'ISENTA', attributes: { min: '0.01', step: '0.01' } },
+  { name: 'maxDaily', label: 'Teto diário (R$)', hint: 'Opcional', type: 'number', optional: true, visible: (form) => form.strategy === 'POR_HORA', attributes: { min: '0.01', step: '0.01' } },
+  { name: 'active', label: 'Situação', type: 'boolean', choices: [{ key: 'inativa', label: 'Inativa', value: false }, { key: 'ativa', label: 'Ativa (desativa a atual)', value: true }] },
+]
 
 /** Monta a Tarifa (Context) com a Strategy gravada no banco. */
 function toTarifa(row: Tariff): Tarifa {
@@ -113,30 +123,7 @@ export function TariffsPage() {
 
       {crud.formOpen && (
         <FormModal id="tariff-form" eyebrow="Cadastro de tarifas" title={crud.editing ? 'Editar tarifa' : 'Nova tarifa'} error={error} submitLabel="Salvar tarifa" onSubmit={crud.submit} onClose={crud.close}>
-          <FormField label="Nome">
-            <input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ex.: Tarifa padrão" />
-          </FormField>
-          <FormField label="Tipo de cálculo">
-            <select value={form.strategy} onChange={(event) => setForm({ ...form, strategy: event.target.value as TariffStrategyType })}>
-              {TARIFF_STRATEGIES.map((strategy) => <option key={strategy} value={strategy}>{TARIFF_STRATEGY_LABELS[strategy]}</option>)}
-            </select>
-          </FormField>
-          {form.strategy !== 'ISENTA' && (
-            <FormField label={VALUE_LABELS[form.strategy]}>
-              <input required type="number" min="0.01" step="0.01" value={form.value} onChange={(event) => setForm({ ...form, value: event.target.value })} />
-            </FormField>
-          )}
-          {form.strategy === 'POR_HORA' && (
-            <FormField label="Teto diário (R$)" hint="Opcional">
-              <input type="number" min="0.01" step="0.01" value={form.maxDaily} onChange={(event) => setForm({ ...form, maxDaily: event.target.value })} />
-            </FormField>
-          )}
-          <FormField label="Situação">
-            <select value={form.active ? 'ativa' : 'inativa'} onChange={(event) => setForm({ ...form, active: event.target.value === 'ativa' })}>
-              <option value="inativa">Inativa</option>
-              <option value="ativa">Ativa (desativa a atual)</option>
-            </select>
-          </FormField>
+          <FormFields fields={TARIFF_FIELDS} form={form} onChange={setForm} />
         </FormModal>
       )}
 
