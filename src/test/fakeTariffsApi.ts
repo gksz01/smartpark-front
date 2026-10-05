@@ -1,4 +1,4 @@
-import { vi } from 'vitest'
+import { createFakeCrudApi } from './createFakeCrudApi'
 import type { Tariff, TenantId } from '../core/types'
 import type { TariffInput } from '../services/tariffsApi'
 
@@ -19,34 +19,13 @@ const INITIAL: Record<TenantId, Tariff[]> = {
   company: [],
 }
 
-let tariffs = structuredClone(INITIAL)
-let nextId = 100
-
-export function resetFakeTariffs() {
-  tariffs = structuredClone(INITIAL)
-  nextId = 100
-}
-
-function deactivateOthers(tenantId: TenantId, input: TariffInput) {
-  if (input.active) tariffs[tenantId] = tariffs[tenantId].map((tariff) => ({ ...tariff, active: false }))
-}
-
-export const listTariffs = vi.fn(async (tenantId: TenantId) => tariffs[tenantId])
-
-export const createTariff = vi.fn(async (tenantId: TenantId, input: TariffInput) => {
-  deactivateOthers(tenantId, input)
-  const created = { ...input, id: String(nextId++) }
-  tariffs[tenantId] = [...tariffs[tenantId], created]
-  return created
+// Como a API real: ativar uma tarifa desativa as demais
+const tariffs = createFakeCrudApi<Tariff, TariffInput>(INITIAL, {
+  beforeSave: (items, input) => input.active ? items.map((tariff) => ({ ...tariff, active: false })) : items,
 })
 
-export const updateTariff = vi.fn(async (tenantId: TenantId, id: string, input: TariffInput) => {
-  deactivateOthers(tenantId, input)
-  const updated = { ...input, id }
-  tariffs[tenantId] = tariffs[tenantId].map((tariff) => tariff.id === id ? updated : tariff)
-  return updated
-})
-
-export const deleteTariff = vi.fn(async (tenantId: TenantId, id: string) => {
-  tariffs[tenantId] = tariffs[tenantId].filter((tariff) => tariff.id !== id)
-})
+export const resetFakeTariffs = tariffs.reset
+export const listTariffs = tariffs.list
+export const createTariff = tariffs.create
+export const updateTariff = tariffs.update
+export const deleteTariff = tariffs.remove

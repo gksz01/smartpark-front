@@ -1,4 +1,4 @@
-import { vi } from 'vitest'
+import { createFakeCrudApi } from './createFakeCrudApi'
 import type { TenantId, Vehicle } from '../core/types'
 import type { VehicleInput } from '../services/vehiclesApi'
 
@@ -14,28 +14,10 @@ const INITIAL: Record<TenantId, Vehicle[]> = {
   company: [{ id: '3', nickname: 'Carro da equipe', plate: 'NXR5D67', model: 'Chevrolet Onix', color: 'Branco', unit: '', rfidTag: 'NX-71520' }],
 }
 
-let vehicles = structuredClone(INITIAL)
-let nextId = 100
+const vehicles = createFakeCrudApi<Vehicle, VehicleInput>(INITIAL)
 
-export function resetFakeVehicles() {
-  vehicles = structuredClone(INITIAL)
-  nextId = 100
-}
-
-export const listVehicles = vi.fn(async (tenantId: TenantId) => vehicles[tenantId])
-
-export const createVehicle = vi.fn(async (tenantId: TenantId, input: VehicleInput) => {
-  const created = { ...input, id: String(nextId++) }
-  vehicles[tenantId] = [...vehicles[tenantId], created]
-  return created
-})
-
-export const updateVehicle = vi.fn(async (tenantId: TenantId, id: string, input: VehicleInput) => {
-  const updated = { ...input, id }
-  vehicles[tenantId] = vehicles[tenantId].map((vehicle) => vehicle.id === id ? updated : vehicle)
-  return updated
-})
-
-export const deleteVehicle = vi.fn(async (tenantId: TenantId, id: string) => {
-  vehicles[tenantId] = vehicles[tenantId].filter((vehicle) => vehicle.id !== id)
-})
+export const resetFakeVehicles = vehicles.reset
+export const listVehicles = vehicles.list
+export const createVehicle = vehicles.create
+export const updateVehicle = vehicles.update
+export const deleteVehicle = vehicles.remove

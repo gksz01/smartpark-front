@@ -1,4 +1,4 @@
-import { vi } from 'vitest'
+import { createFakeCrudApi } from './createFakeCrudApi'
 import type { TenantId, User } from '../core/types'
 import type { UserInput } from '../services/usersApi'
 
@@ -20,28 +20,10 @@ const INITIAL: Record<TenantId, User[]> = {
   company: [{ id: '6', name: 'Lucas Martins', document: '890.123.456-78', type: 'funcionario', role: 'employee', active: true }],
 }
 
-let users = structuredClone(INITIAL)
-let nextId = 100
+const users = createFakeCrudApi<User, UserInput>(INITIAL)
 
-export function resetFakeUsers() {
-  users = structuredClone(INITIAL)
-  nextId = 100
-}
-
-export const listUsers = vi.fn(async (tenantId: TenantId) => users[tenantId])
-
-export const createUser = vi.fn(async (tenantId: TenantId, input: UserInput) => {
-  const created = { ...input, id: String(nextId++) }
-  users[tenantId] = [...users[tenantId], created]
-  return created
-})
-
-export const updateUser = vi.fn(async (tenantId: TenantId, id: string, input: UserInput) => {
-  const updated = { ...input, id }
-  users[tenantId] = users[tenantId].map((user) => user.id === id ? updated : user)
-  return updated
-})
-
-export const deleteUser = vi.fn(async (tenantId: TenantId, id: string) => {
-  users[tenantId] = users[tenantId].filter((user) => user.id !== id)
-})
+export const resetFakeUsers = users.reset
+export const listUsers = users.list
+export const createUser = users.create
+export const updateUser = users.update
+export const deleteUser = users.remove

@@ -1,4 +1,4 @@
-import { vi } from 'vitest'
+import { createFakeCrudApi } from './createFakeCrudApi'
 import type { AccessRecord, TenantId } from '../core/types'
 import type { AccessInput } from '../services/accessApi'
 
@@ -18,29 +18,14 @@ const INITIAL: Record<TenantId, AccessRecord[]> = {
   company: [{ id: '6', person: 'Lucas Martins', identifier: 'RF-10982', method: 'RFID', direction: 'Entrada', status: 'Liberado', manual: false, denialReason: '', time: '08:55' }],
 }
 
-let accesses = structuredClone(INITIAL)
-let nextId = 100
-
-export function resetFakeAccess() {
-  accesses = structuredClone(INITIAL)
-  nextId = 100
-}
-
-export const listAccess = vi.fn(async (tenantId: TenantId) => accesses[tenantId])
-
-export const createAccess = vi.fn(async (tenantId: TenantId, input: AccessInput) => {
-  const created = { ...input, id: String(nextId++), manual: true, time: '15:00' }
-  accesses[tenantId] = [created, ...accesses[tenantId]]
-  return created
+// Como a API real: o acesso novo é manual, entra no topo e a edição mantém os demais campos
+const accesses = createFakeCrudApi<AccessRecord, AccessInput>(INITIAL, {
+  prepend: true,
+  build: (input, id, previous) => previous ? { ...previous, ...input } : { ...input, id, manual: true, time: '15:00' },
 })
 
-export const updateAccess = vi.fn(async (tenantId: TenantId, id: string, input: AccessInput) => {
-  const previous = accesses[tenantId].find((access) => access.id === id)!
-  const updated = { ...previous, ...input }
-  accesses[tenantId] = accesses[tenantId].map((access) => access.id === id ? updated : access)
-  return updated
-})
-
-export const deleteAccess = vi.fn(async (tenantId: TenantId, id: string) => {
-  accesses[tenantId] = accesses[tenantId].filter((access) => access.id !== id)
-})
+export const resetFakeAccess = accesses.reset
+export const listAccess = accesses.list
+export const createAccess = accesses.create
+export const updateAccess = accesses.update
+export const deleteAccess = accesses.remove

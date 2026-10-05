@@ -1,4 +1,5 @@
 import { vi } from 'vitest'
+import { createFakeCrudApi } from './createFakeCrudApi'
 import type { Payment, TenantId } from '../core/types'
 import type { PaymentInput } from '../services/paymentsApi'
 
@@ -23,34 +24,23 @@ const INITIAL: Record<TenantId, Payment[]> = {
 
 const PREFIXES = { 'Pix': 'PIX', 'Crédito': 'CRE', 'Débito': 'DEB' } as const
 
-let payments = structuredClone(INITIAL)
-let nextId = 100
+// Lista e exclusão vêm da fábrica; pagar e estornar têm regras próprias
+const payments = createFakeCrudApi<Payment, PaymentInput>(INITIAL, { prepend: true })
 
-export function resetFakePayments() {
-  payments = structuredClone(INITIAL)
-  nextId = 100
-}
-
-export const listPayments = vi.fn(async (tenantId: TenantId) => payments[tenantId])
+export const resetFakePayments = payments.reset
+export const listPayments = payments.list
+export const deletePayment = payments.remove
 
 export const createPayment = vi.fn(async (tenantId: TenantId, input: PaymentInput) => {
-  const id = String(nextId++)
+  const id = payments.newId()
   const amount = input.attendanceNumber ? 0 : input.duration * 12
-  const created: Payment = {
+  return payments.add(tenantId, {
     ...base, id, vehicleId: input.vehicleId, vehicleLabel: 'Meu carro', duration: input.duration, tariffAmount: input.duration * 12, amount, chargedAmount: amount,
     method: input.method, installments: input.installments, detail: `${input.method} aprovado`, status: 'aprovado', receipt: `${PREFIXES[input.method]}-NOVO${id}`,
     attendanceNumber: input.attendanceNumber ?? null, agreementName: input.attendanceNumber ? 'Saúde Plena' : null,
-  }
-  payments[tenantId] = [created, ...payments[tenantId]]
-  return created
+  })
 })
 
 export const refundPayment = vi.fn(async (tenantId: TenantId, id: string) => {
-  const updated = { ...payments[tenantId].find((payment) => payment.id === id)!, status: 'estornado' as const }
-  payments[tenantId] = payments[tenantId].map((payment) => payment.id === id ? updated : payment)
-  return updated
-})
-
-export const deletePayment = vi.fn(async (tenantId: TenantId, id: string) => {
-  payments[tenantId] = payments[tenantId].filter((payment) => payment.id !== id)
+  return payments.replace(tenantId, { ...payments.find(tenantId, id), status: 'estornado' })
 })

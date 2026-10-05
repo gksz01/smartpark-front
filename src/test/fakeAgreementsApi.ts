@@ -1,4 +1,5 @@
 import { vi } from 'vitest'
+import { createFakeCrudApi } from './createFakeCrudApi'
 import type { Agreement, AttendanceCheck, TenantId } from '../core/types'
 import type { AgreementInput } from '../services/agreementsApi'
 
@@ -24,32 +25,15 @@ const ATTENDANCES: Record<string, AttendanceCheck> = {
   'ATD-55120': { number: 'ATD-55120', patient: 'João Lima', agreement: 'Plano Antigo', benefit: 'Desconto de 30%', eligible: false, reason: 'O convênio Plano Antigo está inativo.' },
 }
 
-let agreements = structuredClone(INITIAL)
-let nextId = 100
-
-export function resetFakeAgreements() {
-  agreements = structuredClone(INITIAL)
-  nextId = 100
-}
-
-export const listAgreements = vi.fn(async (tenantId: TenantId) => agreements[tenantId])
-
-export const createAgreement = vi.fn(async (tenantId: TenantId, input: AgreementInput) => {
-  const created = { ...input, id: String(nextId++), attendanceCount: 0 }
-  agreements[tenantId] = [...agreements[tenantId], created]
-  return created
+const agreements = createFakeCrudApi<Agreement, AgreementInput>(INITIAL, {
+  build: (input, id, previous) => previous ? { ...previous, ...input } : { ...input, id, attendanceCount: 0 },
 })
 
-export const updateAgreement = vi.fn(async (tenantId: TenantId, id: string, input: AgreementInput) => {
-  const previous = agreements[tenantId].find((agreement) => agreement.id === id)!
-  const updated = { ...previous, ...input }
-  agreements[tenantId] = agreements[tenantId].map((agreement) => agreement.id === id ? updated : agreement)
-  return updated
-})
-
-export const deleteAgreement = vi.fn(async (tenantId: TenantId, id: string) => {
-  agreements[tenantId] = agreements[tenantId].filter((agreement) => agreement.id !== id)
-})
+export const resetFakeAgreements = agreements.reset
+export const listAgreements = agreements.list
+export const createAgreement = agreements.create
+export const updateAgreement = agreements.update
+export const deleteAgreement = agreements.remove
 
 export const validateAttendance = vi.fn(async (_tenantId: TenantId, number: string) => {
   const found = ATTENDANCES[number.trim().toUpperCase()]
