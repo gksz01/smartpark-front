@@ -1,4 +1,5 @@
 import type { EstrategiaPagamento, FormaPagamento, ResultadoPagamento } from './EstrategiaPagamento'
+import { formatarMoeda } from '../../formatacao'
 
 const MAXIMO_PARCELAS = 3
 const TAXA_PARCELAMENTO = 0.05 // 5% quando parcelado
@@ -24,7 +25,6 @@ export class PagamentoCredito implements EstrategiaPagamento {
       return { valorCobrado: valor, detalhe: 'Crédito à vista' }
     }
     const valorCobrado = Math.round(valor * (1 + TAXA_PARCELAMENTO) * 100) / 100
-    const valorParcela = (valorCobrado / this.parcelas).toFixed(2).replace('.', ',')
-    return { valorCobrado, detalhe: `Crédito em ${this.parcelas}x de R$ ${valorParcela}` }
+    return { valorCobrado, detalhe: `Crédito em ${this.parcelas}x de ${formatarMoeda(valorCobrado / this.parcelas)}` }
   }
 }

@@ -1,4 +1,5 @@
 import type { EstrategiaTarifa } from './EstrategiaTarifa'
+import { formatarMoeda } from '../../formatacao'
 
 const HORAS_POR_DIA = 24
 
@@ -17,6 +18,6 @@ export class TarifaFixaDiaria implements EstrategiaTarifa {
   }
 
   descricao(): string {
-    return `R$ ${this.valorDiaria.toFixed(2).replace('.', ',')}/dia`
+    return `${formatarMoeda(this.valorDiaria)}/dia`
   }
 }

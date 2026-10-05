@@ -1,4 +1,5 @@
 import type { EstrategiaTarifa } from './EstrategiaTarifa'
+import { formatarMoeda } from '../../formatacao'
 
 /** Estratégia concreta: cobra por hora iniciada, com teto diário opcional (Shopping). */
 export class TarifaPorHora implements EstrategiaTarifa {
@@ -19,8 +20,8 @@ export class TarifaPorHora implements EstrategiaTarifa {
   }
 
   descricao(): string {
-    const texto = `R$ ${this.valorHora.toFixed(2).replace('.', ',')}/hora`
+    const texto = `${formatarMoeda(this.valorHora)}/hora`
     if (this.valorMaximoDiario === undefined) return texto
-    return `${texto} (máx. R$ ${this.valorMaximoDiario.toFixed(2).replace('.', ',')}/dia)`
+    return `${texto} (máx. ${formatarMoeda(this.valorMaximoDiario)}/dia)`
   }
 }

@@ -3,6 +3,7 @@ import type { TenantId } from '../../src/core/types'
 import { VARIANTE_POR_TENANT } from '../../src/domain/factories/variante/variantePorTenant'
 import { randomUUID } from 'node:crypto'
 import { Convenio } from '../../src/domain/Convenio'
+import { formatarDataIso } from '../../src/domain/formatacao'
 import { Pagamento } from '../../src/domain/Pagamento'
 import { Reserva } from '../../src/domain/Reserva'
 import { CRIAR_ESTRATEGIA_PAGAMENTO } from '../../src/domain/strategies/pagamento/estrategiaPorForma'
@@ -107,9 +108,7 @@ const TARIFAS_ALTERNATIVAS = [
 function diaRelativo(dias: number): string {
   const data = new Date()
   data.setDate(data.getDate() + dias)
-  const mes = String(data.getMonth() + 1).padStart(2, '0')
-  const dia = String(data.getDate()).padStart(2, '0')
-  return `${data.getFullYear()}-${mes}-${dia}`
+  return formatarDataIso(data)
 }
 
 /**

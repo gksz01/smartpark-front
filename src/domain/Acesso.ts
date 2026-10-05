@@ -1,4 +1,5 @@
 import type { AccessDirection, AccessMethod, AccessStatus } from '../core/types'
+import { formatarHora } from './formatacao'
 
 // Mesmos valores da tela de Entradas e saídas (core/types.ts).
 export type DirecaoAcesso = AccessDirection
@@ -59,8 +60,6 @@ export class Acesso {
 
   /** Formato HH:MM usado na tabela de acessos. */
   horarioFormatado(): string {
-    const horas = String(this.horario.getHours()).padStart(2, '0')
-    const minutos = String(this.horario.getMinutes()).padStart(2, '0')
-    return `${horas}:${minutos}`
+    return formatarHora(this.horario)
   }
 }

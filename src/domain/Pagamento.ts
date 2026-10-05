@@ -1,5 +1,6 @@
 import type { PaymentStatus } from '../core/types'
 import type { EstrategiaPagamento, FormaPagamento } from './strategies/pagamento/EstrategiaPagamento'
+import { formatarMoeda } from './formatacao'
 
 // Mesmos status usados pela tela e pela tabela pagamentos (core/types.ts).
 export type StatusPagamento = PaymentStatus
@@ -82,6 +83,6 @@ export class Pagamento {
   }
 
   valorFormatado(): string {
-    return `R$ ${this.valor.toFixed(2).replace('.', ',')}`
+    return formatarMoeda(this.valor)
   }
 }

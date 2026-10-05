@@ -7,6 +7,7 @@ import { CRIAR_ESTRATEGIA } from '../../domain/strategies/tarifa/estrategiaPorTi
 import { Tarifa } from '../../domain/Tarifa'
 import { createTariff, deleteTariff, listTariffs, updateTariff, type TariffInput } from '../../services/tariffsApi'
 import { Alert, Button, Card, ConfirmDialog, DataTable, FormField, PageHeader, StatusBadge, VariationInfo, type Column } from '../../shared/ui'
+import { formatarMoeda } from '../../domain/formatacao'
 
 const EMPTY_FORM = { name: '', strategy: 'POR_HORA' as TariffStrategyType, value: '', maxDaily: '', active: false }
 
@@ -122,7 +123,7 @@ export function TariffsPage() {
     { header: 'Tipo', render: (row) => TARIFF_STRATEGY_LABELS[row.strategy] },
     // descricao() e calcular(3) vêm da Strategy, por meio da classe Tarifa
     { header: 'Configuração', render: (row) => toTarifa(row).estrategia.descricao() },
-    { header: 'Simulação 3h', render: (row) => <strong>R$ {toTarifa(row).calcular(3).toFixed(2).replace('.', ',')}</strong> },
+    { header: 'Simulação 3h', render: (row) => <strong>{formatarMoeda(toTarifa(row).calcular(3))}</strong> },
     { header: 'Situação', render: (row) => <StatusBadge tone={row.active ? 'success' : 'neutral'}>{row.active ? 'Ativa' : 'Inativa'}</StatusBadge> },
     {
       header: 'Ações',

@@ -19,6 +19,7 @@ import { createPayment, deletePayment, listPayments, refundPayment } from '../..
 import { listSpaces } from '../../services/spacesApi'
 import { listTariffs } from '../../services/tariffsApi'
 import { Alert, Button, Card, ConfirmDialog, DataTable, EmptyState, FormField, OccupancyBar, PageHeader, StatusBadge, VariationInfo, type Column } from '../../shared/ui'
+import { formatarDataIso, formatarMoeda } from '../../domain/formatacao'
 
 function ParkingCard({ parking }: { parking: Parking }) {
   const { tenant } = useTenant()
@@ -78,11 +79,6 @@ export function ParkingDetailPage() {
 const DURATION_OPTIONS = [1, 2, 4, 8]
 const RESERVATION_TONE = { pendente: 'warning', confirmada: 'success', cancelada: 'neutral', concluida: 'info' } as const
 
-function todayIso() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
-
 /** Tarifa ativa → Tarifa (Context) com a Strategy gravada no banco. */
 function activeTarifa(tariffs: Tariff[]): Tarifa | null {
   const row = tariffs.find((tariff) => tariff.active)
@@ -113,7 +109,7 @@ export function ReservationPage() {
   const [freeSpaces, setFreeSpaces] = useState<ParkingSpace[]>([])
   const [tarifa, setTarifa] = useState<Tarifa | null>(null)
   const [saved, setSaved] = useState<Reservation | null>(null)
-  const [form, setForm] = useState({ date: todayIso(), time: '18:30', duration: '2', vehicleId: '', spaceId: '' })
+  const [form, setForm] = useState({ date: formatarDataIso(new Date()), time: '18:30', duration: '2', vehicleId: '', spaceId: '' })
   const [editing, setEditing] = useState<Reservation | null>(null)
   const [editForm, setEditForm] = useState({ date: '', time: '', duration: '2' })
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -221,7 +217,7 @@ export function ReservationPage() {
     { header: 'Data', render: (row) => row.date.split('-').reverse().join('/') },
     { header: 'Horário', render: (row) => row.time },
     { header: 'Duração', render: (row) => `${row.duration}h` },
-    { header: 'Valor', render: (row) => `R$ ${row.estimate.toFixed(2).replace('.', ',')}` },
+    { header: 'Valor', render: (row) => formatarMoeda(row.estimate) },
     { header: 'Status', render: (row) => <StatusBadge tone={RESERVATION_TONE[row.status]}>{RESERVATION_STATUS_LABELS[row.status]}</StatusBadge> },
     {
       header: 'Ações',
@@ -253,7 +249,7 @@ export function ReservationPage() {
           <p className="eyebrow">Reserva confirmada</p>
           <h2>Sua vaga está garantida.</h2>
           <p>Chegue até 15 minutos após o horário reservado e acesse por {ACCESS_LABELS[tenant.accessMethod]}.</p>
-          <div className="receipt-code">Reserva #{saved.id} · Vaga {saved.spaceCode} · R$ {saved.estimate.toFixed(2).replace('.', ',')}</div>
+          <div className="receipt-code">Reserva #{saved.id} · Vaga {saved.spaceCode} · {formatarMoeda(saved.estimate)}</div>
           <div className="flex justify-center gap-2">
             <Button variant="secondary" onClick={() => setSaved(null)}>Nova reserva</Button>
             <Button onClick={() => navigate('/app/home')}>Voltar ao início</Button>
@@ -288,7 +284,7 @@ export function ReservationPage() {
             </div>
             <div className="estimate">
               <span>Estimativa da reserva{tarifa ? ` · ${tarifa.nome}` : ''}</span>
-              <strong>{estimate === null ? 'Sem tarifa ativa' : `R$ ${estimate.toFixed(2).replace('.', ',')}`}</strong>
+              <strong>{estimate === null ? 'Sem tarifa ativa' : formatarMoeda(estimate)}</strong>
             </div>
             <Button className="w-full justify-center" type="submit" disabled={!state.vehicles.length || !freeSpaces.length}>Confirmar reserva <ArrowRight size={17} /></Button>
           </Card>
@@ -328,7 +324,7 @@ export function ReservationPage() {
             </div>
             <div className="estimate mt-5">
               <span>Nova estimativa</span>
-              <strong>{editEstimate === null ? 'Sem tarifa ativa' : `R$ ${editEstimate.toFixed(2).replace('.', ',')}`}</strong>
+              <strong>{editEstimate === null ? 'Sem tarifa ativa' : formatarMoeda(editEstimate)}</strong>
             </div>
             {error && <div className="mt-5"><Alert tone="danger">{error}</Alert></div>}
             <div className="mt-7 flex justify-end gap-2">
@@ -354,7 +350,6 @@ export function ReservationPage() {
 const PAYMENT_DURATIONS = [1, 2, 3, 4, 8]
 const PAYMENT_TONE = { pendente: 'warning', aprovado: 'success', estornado: 'neutral' } as const
 const INSTALLMENT_OPTIONS = Array.from({ length: PagamentoCredito.MAXIMO_PARCELAS }, (_, index) => index + 1)
-const money = (value: number) => `R$ ${value.toFixed(2).replace('.', ',')}`
 
 /**
  * Prévia pelo mesmo caminho da API: Tarifa (Strategy) → [TarifaComConvenio] → Strategy de pagamento.
@@ -485,8 +480,8 @@ export function PaymentsPage() {
   const columns: Column<Payment>[] = [
     { header: 'Comprovante', render: (row) => <div><strong>{row.receipt}</strong><small className="table-subtitle">{new Date(row.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</small></div> },
     { header: 'Veículo', render: (row) => <div>{row.vehicleLabel}<small className="table-subtitle">{row.duration}h</small></div> },
-    { header: 'Valor', render: (row) => <div>{money(row.amount)}{row.tariffAmount !== row.amount && <small className="table-subtitle">tarifa {money(row.tariffAmount)}</small>}</div> },
-    { header: 'Cobrado', render: (row) => <strong>{money(row.chargedAmount)}</strong> },
+    { header: 'Valor', render: (row) => <div>{formatarMoeda(row.amount)}{row.tariffAmount !== row.amount && <small className="table-subtitle">tarifa {formatarMoeda(row.tariffAmount)}</small>}</div> },
+    { header: 'Cobrado', render: (row) => <strong>{formatarMoeda(row.chargedAmount)}</strong> },
     { header: 'Forma', render: (row) => row.installments > 1 ? `${row.method} · ${row.installments}x` : row.method },
     { header: 'Convênio', render: (row) => row.attendanceNumber ? <div>{row.agreementName}<small className="table-subtitle">{row.attendanceNumber}</small></div> : '—' },
     { header: 'Status', render: (row) => <StatusBadge tone={PAYMENT_TONE[row.status]}>{PAYMENT_STATUS_LABELS[row.status]}</StatusBadge> },
@@ -515,11 +510,11 @@ export function PaymentsPage() {
         <Card className="success-panel">
           <span><Check size={30} /></span>
           <p className="eyebrow">Pagamento aprovado</p>
-          <h2>{money(receipt.chargedAmount)}</h2>
+          <h2>{formatarMoeda(receipt.chargedAmount)}</h2>
           <p>{receipt.detail}</p>
           <div className="receipt-lines">
             <span>Veículo <strong>{receipt.vehicleLabel}</strong></span>
-            <span>Valor da tarifa <strong>{money(receipt.tariffAmount)}</strong></span>
+            <span>Valor da tarifa <strong>{formatarMoeda(receipt.tariffAmount)}</strong></span>
             {receipt.attendanceNumber && <span>Convênio <strong>{receipt.agreementName} · {receipt.attendanceNumber}</strong></span>}
             <span>Forma <strong>{receipt.installments > 1 ? `${receipt.method} · ${receipt.installments}x` : receipt.method}</strong></span>
             <span>Comprovante <strong>{receipt.receipt}</strong></span>
@@ -531,7 +526,7 @@ export function PaymentsPage() {
         <Card className="payment-panel">
           <div className="payment-summary">
             <span><WalletCards size={22} /></span>
-            <div><p>Valor total</p><strong>{preview ? money(preview.charged) : 'Sem tarifa ativa'}</strong></div>
+            <div><p>Valor total</p><strong>{preview ? formatarMoeda(preview.charged) : 'Sem tarifa ativa'}</strong></div>
           </div>
           <div className="form-grid">
             <FormField label="Veículo">
@@ -558,10 +553,10 @@ export function PaymentsPage() {
           </FeatureGate>
           <div className="receipt-lines">
             <span>Tarifa <strong>{tarifa ? tarifa.nome : 'Sem tarifa ativa'}</strong></span>
-            {preview && <span>Valor da tarifa <strong>{money(preview.tariffAmount)}</strong></span>}
+            {preview && <span>Valor da tarifa <strong>{formatarMoeda(preview.tariffAmount)}</strong></span>}
             {convenio && <span>Convênio <strong>{convenio.nome} · {convenio.descricaoBeneficio()}</strong></span>}
-            {preview && <span>Valor a pagar <strong>{money(preview.amount)}</strong></span>}
-            {preview && preview.charged !== preview.amount && <span>Com taxa do parcelamento <strong>{money(preview.charged)}</strong></span>}
+            {preview && <span>Valor a pagar <strong>{formatarMoeda(preview.amount)}</strong></span>}
+            {preview && preview.charged !== preview.amount && <span>Com taxa do parcelamento <strong>{formatarMoeda(preview.charged)}</strong></span>}
           </div>
           <h3>Forma de pagamento</h3>
           <div className="payment-methods">
@@ -580,7 +575,7 @@ export function PaymentsPage() {
           )}
           {preview && <p className="mt-3 text-sm text-slate-500">{preview.detail}</p>}
           <Button className="mt-5 w-full justify-center" onClick={pay} disabled={!preview || !vehicleId}>
-            Pagar {preview ? money(preview.charged) : ''} <ArrowRight size={17} />
+            Pagar {preview ? formatarMoeda(preview.charged) : ''} <ArrowRight size={17} />
           </Button>
         </Card>
       )}
