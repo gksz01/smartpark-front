@@ -1,58 +1,104 @@
 @page "/"
-@using SmartPark.Dominio.LinhaDeProduto
+@layout LayoutVazio
 @inject SessaoUsuario Sessao
 @inject NavigationManager Navegacao
 
 <PageTitle>SmartPark</PageTitle>
 
-<section class="selecao">
-    <header>
-        <h1>SmartPark</h1>
-        <p>Uma linha de produto, quatro variantes. Escolha o cliente e o perfil para entrar.</p>
-    </header>
-
-    <div class="cartoes-tenant">
-        @foreach (var tenant in RegistroTenants.Todos)
-        {
-            <button type="button" class="cartao-tenant @(tenant == _tenant ? "selecionado" : "")"
-                    style="--cor-primaria:@tenant.Tema.Primaria" @onclick="() => Escolher(tenant)">
-                <span class="logo">@tenant.Logo</span>
-                <strong>@tenant.Nome</strong>
-                <small>@tenant.Chamada</small>
-                <span class="recursos">
-                    @foreach (var recurso in Enum.GetValues<Recurso>().Where(tenant.PossuiRecurso))
-                    {
-                        <span class="etiqueta cinza">@Rotulos.De(recurso)</span>
-                    }
-                </span>
-            </button>
-        }
-    </div>
-
-    @if (_tenant is not null)
-    {
-        <div class="entrada">
-            <CampoSelecao Rotulo="Perfil" @bind-Valor="_perfil" Opcoes="OpcaoSelecao.DeEnum(_tenant.PerfisPermitidos)" />
-            <button type="button" class="botao" @onclick="Entrar">Entrar em @_tenant.NomeCurto</button>
+<main class="selection-page" style="@LayoutPrincipal.EstiloTema(_tenant.Tema)">
+    <div class="selection-orb selection-orb-one"></div><div class="selection-orb selection-orb-two"></div>
+    <div class="selection-container">
+        <header class="selection-header"><Marca Tenant="_tenant" /><div class="academic-pill"><Icone Nome="Sparkles" Tamanho="15" /> Protótipo acadêmico · C# + Blazor</div></header>
+        <div class="selection-intro">
+            <p class="eyebrow">Linha de Produto de Software</p>
+            <h1>Um produto.<br /><span>Quatro experiências.</span></h1>
+            <p>Escolha um cliente e um perfil para ver a mesma base se adaptar em tempo real.</p>
         </div>
-    }
-</section>
+        <div class="selection-grid">
+            <section>
+                <div class="section-title"><span>01</span><div><h2>Escolha o cliente</h2><p>Cada operação ativa identidade e capacidades próprias.</p></div></div>
+                <div class="tenant-picker">
+                    @foreach (var tenant in RegistroTenants.Todos)
+                    {
+                        <button type="button" class="@(tenant == _tenant ? "selected" : "")" @onclick="() => EscolherTenant(tenant)">
+                            <span class="tenant-option-icon"><Icone Nome="@IconeDoTenant(tenant)" Tamanho="21" /></span>
+                            <span><strong>@tenant.NomeCurto</strong><small>@Rotulos.De(tenant.MetodoAcesso)</small></span>
+                            @if (tenant == _tenant)
+                            {
+                                <span class="tenant-check"><Icone Nome="Check" Tamanho="14" /></span>
+                            }
+                        </button>
+                    }
+                </div>
+            </section>
+            <section>
+                <div class="section-title"><span>02</span><div><h2>Escolha o perfil</h2><p>Os acessos disponíveis dependem do cliente.</p></div></div>
+                <div class="role-picker">
+                    @foreach (var perfil in Enum.GetValues<Perfil>().Where(_tenant.PerfisPermitidos.Contains))
+                    {
+                        <button type="button" class="@(perfil == _perfil ? "selected" : "")" @onclick="() => _perfil = perfil">
+                            @Rotulos.De(perfil)
+                            @if (perfil == _perfil)
+                            {
+                                <Icone Nome="Check" Tamanho="14" />
+                            }
+                        </button>
+                    }
+                </div>
+                <Cartao Classe="configuration-preview">
+                    <div class="flex items-start justify-between gap-4">
+                        <div><span class="preview-logo">@_tenant.Logo</span><h3>@_tenant.Nome</h3><p>@_tenant.Chamada</p></div>
+                        <span class="access-chip">@Rotulos.De(_tenant.MetodoAcesso)</span>
+                    </div>
+                    <div class="feature-list">
+                        @foreach (var recurso in Enum.GetValues<Recurso>())
+                        {
+                            var ligado = _tenant.PossuiRecurso(recurso);
+                            <span class="@(ligado ? "enabled" : "disabled")"><span>@(ligado ? "ON" : "OFF")</span>@Rotulos.De(recurso)</span>
+                        }
+                    </div>
+                </Cartao>
+                <label class="selection-academic">
+                    <input type="checkbox" checked="@Sessao.ModoAcademico" @onchange="evento => Sessao.DefinirModoAcademico(evento.Value is true)" /><span></span>
+                    <div><strong>Modo de demonstração acadêmica</strong><small>Exibe como cada tela implementa variabilidade e reúso.</small></div>
+                </label>
+                <button type="button" class="button button-primary enter-button" @onclick="Entrar">Entrar como @Rotulos.De(_perfil) <Icone Nome="ArrowRight" Tamanho="18" /></button>
+            </section>
+        </div>
+        <InfoVariacao>Esta interface lê uma configuração central (RegistroTenants) para combinar marca, método de acesso, recursos e perfis permitidos antes de compor o produto.</InfoVariacao>
+        <footer class="selection-footer"><span>SmartPark · LPS acadêmica</span><span>Configuração • Recursos • Perfis • White-label</span></footer>
+    </div>
+</main>
 
 @code {
-    private DefinicaoTenant? _tenant;
-    private string _perfil = "";
+    private DefinicaoTenant _tenant = RegistroTenants.Todos[0];
+    private Perfil _perfil;
 
-    private void Escolher(DefinicaoTenant tenant)
+    protected override void OnInitialized()
+    {
+        // Volta para a seleção mantendo o cliente e o perfil atuais
+        _tenant = Sessao.Tenant ?? RegistroTenants.Todos[0];
+        _perfil = Sessao.Conectado ? Sessao.Perfil : _tenant.PerfisPermitidos[0];
+    }
+
+    private void EscolherTenant(DefinicaoTenant tenant)
     {
         _tenant = tenant;
-        _perfil = tenant.PerfisPermitidos[0].ToString();
+        if (!tenant.PerfisPermitidos.Contains(_perfil)) _perfil = tenant.PerfisPermitidos[0];
     }
 
-    /// <summary>Entra e vai para a primeira tela que o perfil pode usar neste tenant.</summary>
     private void Entrar()
     {
-        Sessao.Entrar(_tenant!.Identificador, Enum.Parse<Perfil>(_perfil));
-        var primeira = ItemMenu.Todos.FirstOrDefault(item => Sessao.PodeAcessar(item.Permissao, item.RecursoNecessario));
-        Navegacao.NavigateTo(primeira?.Rota ?? "/");
+        Sessao.Entrar(_tenant.Identificador, _perfil);
+        Navegacao.NavigateTo(ItemMenu.RotaInicial(Sessao));
     }
+
+    // Ícone só de apresentação de cada variante (as capacidades vêm do RegistroTenants)
+    private static string IconeDoTenant(DefinicaoTenant tenant) => tenant.Identificador switch
+    {
+        RegistroTenants.Shopping => "ShoppingBag",
+        RegistroTenants.Condominio => "Building2",
+        RegistroTenants.Hospital => "HeartPulse",
+        _ => "Landmark",
+    };
 }

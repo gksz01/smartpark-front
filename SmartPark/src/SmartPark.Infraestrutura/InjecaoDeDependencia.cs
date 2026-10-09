@@ -15,6 +15,7 @@ public static class InjecaoDeDependencia
         servicos.AddDbContext<SmartParkDbContext>(opcoes => opcoes.UseSqlite(conexao));
         servicos.AddScoped<ISmartParkContexto>(provedor => provedor.GetRequiredService<SmartParkDbContext>());
         servicos.AddScoped<PopuladorBanco>();
+        servicos.AddScoped<IPopuladorBanco>(provedor => provedor.GetRequiredService<PopuladorBanco>());
         return servicos;
     }
 

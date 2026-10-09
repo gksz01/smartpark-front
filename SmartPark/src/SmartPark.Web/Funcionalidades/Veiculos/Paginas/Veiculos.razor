@@ -34,7 +34,7 @@
             {
                 <td>@(campo.Chave == "unidade" ? veiculo.Unidade : veiculo.TagRfid)</td>
             }
-            <td><AcoesLinha AoEditar="() => AbrirEdicao(veiculo)" AoExcluir="() => ExcluirAsync(veiculo)" /></td>
+            <td><AcoesLinha Rotulo="registro" AoEditar="() => AbrirEdicao(veiculo)" AoExcluir="() => ExcluirAsync(veiculo)" /></td>
         </Linha>
     </TabelaDados>
 

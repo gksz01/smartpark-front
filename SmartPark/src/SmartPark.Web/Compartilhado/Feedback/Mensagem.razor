@@ -1,14 +1,19 @@
-@* Mensagem de sucesso ou de erro. Não aparece quando as duas estão vazias. *@
+@* Alerta de sucesso, aviso ou erro. Equivale ao Alert. Não aparece quando tudo está vazio. *@
 @if (!string.IsNullOrEmpty(Erro))
 {
-    <div class="mensagem erro" role="alert">@Erro</div>
+    <div class="alert alert-danger" role="alert"><Icone Nome="AlertTriangle" Tamanho="18" /><div>@Erro</div></div>
+}
+else if (!string.IsNullOrEmpty(Aviso))
+{
+    <div class="alert alert-warning" role="status"><Icone Nome="AlertTriangle" Tamanho="18" /><div>@Aviso</div></div>
 }
 else if (!string.IsNullOrEmpty(Sucesso))
 {
-    <div class="mensagem sucesso" role="status">@Sucesso</div>
+    <div class="alert alert-success" role="status"><Icone Nome="Check" Tamanho="18" /><div>@Sucesso</div></div>
 }
 
 @code {
     [Parameter] public string? Sucesso { get; set; }
+    [Parameter] public string? Aviso { get; set; }
     [Parameter] public string? Erro { get; set; }
 }

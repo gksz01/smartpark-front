@@ -33,18 +33,18 @@
             </td>
             <td>@Formatacao.FormatarMoeda(pagamento.ValorCobrado)</td>
             <td>@Rotulos.De(pagamento.Forma)<div class="detalhe">@pagamento.Detalhe</div></td>
-            <td><Etiqueta Texto="@pagamento.Status.ToString()" Cor="@CoresStatus.De(pagamento.Status)" /></td>
+            <td><Etiqueta Texto="@pagamento.Status.ToString()" Tom="@CoresStatus.De(pagamento.Status)" /></td>
             <td><code>@pagamento.Comprovante</code></td>
             <td>
                 @if (pagamento.Status == StatusPagamento.Aprovado)
                 {
-                    <AcoesLinha>
+                    <AcoesLinha Rotulo="registro">
                         <button type="button" class="botao pequeno perigo-contorno" @onclick="() => EstornarAsync(pagamento)">Estornar</button>
                     </AcoesLinha>
                 }
                 else if (pagamento.Status == StatusPagamento.Estornado)
                 {
-                    <AcoesLinha AoExcluir="() => ExcluirAsync(pagamento)" />
+                    <AcoesLinha Rotulo="registro" AoExcluir="() => ExcluirAsync(pagamento)" />
                 }
             </td>
         </Linha>

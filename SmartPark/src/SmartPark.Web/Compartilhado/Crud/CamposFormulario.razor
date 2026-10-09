@@ -1,37 +1,28 @@
-@* Desenha uma lista de CampoFormulario. Equivale ao FormFields da versão React. *@
-<div class="campos-formulario">
-    @foreach (var campo in Campos.Where(campo => campo.Visivel?.Invoke() ?? true))
+@* Desenha uma lista de CampoFormulario. Equivale ao FormFields. *@
+@foreach (var campo in Campos.Where(campo => campo.Visivel?.Invoke() ?? true))
+{
+    @if (campo.Tipo == TipoCampo.Selecao)
     {
-        @switch (campo.Tipo)
-        {
-            case TipoCampo.Marcacao:
-                <label class="campo-marcacao">
-                    <input type="checkbox" checked="@(campo.Ler() == "true")" disabled="@campo.Desabilitado"
-                           @onchange="evento => GravarMarcacao(campo, evento)" />
-                    @campo.Rotulo
-                </label>
-                break;
-            case TipoCampo.Selecao:
-                <CampoSelecao Rotulo="@campo.Rotulo" Valor="@campo.Ler()" Opcoes="campo.Opcoes" Desabilitado="campo.Desabilitado"
-                              ValorChanged="EventCallback.Factory.Create<string>(this, campo.Gravar)" />
-                break;
-            default:
-                <label class="campo">
-                    <span>@campo.Rotulo</span>
-                    <input type="@TipoHtml(campo.Tipo)" value="@campo.Ler()" placeholder="@campo.Exemplo" disabled="@campo.Desabilitado"
-                           step="@(campo.Tipo == TipoCampo.Numero ? "any" : null)"
-                           @onchange="evento => campo.Gravar(evento.Value?.ToString() ?? string.Empty)" />
-                </label>
-                break;
-        }
+        <CampoSelecao Rotulo="@campo.Rotulo" Valor="@campo.Ler()" Opcoes="campo.Opcoes" Desabilitado="campo.Desabilitado" Dica="@campo.Dica"
+                      ValorChanged="EventCallback.Factory.Create<string>(this, campo.Gravar)" />
     }
-</div>
+    else
+    {
+        <label class="form-field">
+            <span>@campo.Rotulo</span>
+            <input type="@TipoHtml(campo.Tipo)" value="@campo.Ler()" placeholder="@campo.Exemplo" disabled="@campo.Desabilitado" required="@(!campo.Opcional)"
+                   step="@(campo.Tipo == TipoCampo.Numero ? "any" : null)"
+                   @onchange="evento => campo.Gravar(evento.Value?.ToString() ?? string.Empty)" />
+            @if (!string.IsNullOrEmpty(campo.Dica))
+            {
+                <small>@campo.Dica</small>
+            }
+        </label>
+    }
+}
 
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<CampoFormulario> Campos { get; set; } = [];
-
-    private static void GravarMarcacao(CampoFormulario campo, ChangeEventArgs evento) =>
-        campo.Gravar(evento.Value is true ? "true" : "false");
 
     private static string TipoHtml(TipoCampo tipo) => tipo switch
     {

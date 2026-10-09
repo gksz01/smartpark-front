@@ -14,6 +14,12 @@ public sealed class SessaoUsuario
     public bool Conectado => Tenant is not null;
     public string TenantId => Tenant?.Identificador ?? "";
 
+    /// <summary>Mostra, em cada tela, como ela implementa variabilidade e reúso (InfoVariacao).</summary>
+    public bool ModoAcademico { get; private set; } = true;
+
+    /// <summary>Muda quando os dados de demonstração são restaurados, para as telas recarregarem.</summary>
+    public int VersaoDados { get; private set; }
+
     /// <summary>Avisa o layout para trocar tema e menu.</summary>
     public event Action? Mudou;
 
@@ -21,6 +27,18 @@ public sealed class SessaoUsuario
     {
         Tenant = RegistroTenants.Obter(tenantId);
         Perfil = perfil;
+        Mudou?.Invoke();
+    }
+
+    public void DefinirModoAcademico(bool ativo)
+    {
+        ModoAcademico = ativo;
+        Mudou?.Invoke();
+    }
+
+    public void InformarDadosRestaurados()
+    {
+        VersaoDados++;
         Mudou?.Invoke();
     }
 

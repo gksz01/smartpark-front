@@ -1,15 +1,16 @@
 @* Notificações criadas pelos observadores (Observer) na última operação. *@
 @if (Itens.Count > 0)
 {
-    <section class="notificacoes">
-        <strong>Notificações</strong>
-        <ul>
+    <div class="alert alert-success" role="status">
+        <Icone Nome="Info" Tamanho="18" />
+        <div>
+            <strong>Notificações</strong>
             @foreach (var notificacao in Itens)
             {
-                <li>@notificacao</li>
+                <div>@notificacao</div>
             }
-        </ul>
-    </section>
+        </div>
+    </div>
 }
 
 @code {

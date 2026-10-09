@@ -20,7 +20,7 @@
     {
         <p>
             <strong>@resultado.Paciente</strong> · @resultado.Convenio · @resultado.Beneficio
-            <Etiqueta Texto="@(resultado.Elegivel ? "Elegível" : "Não elegível")" Cor="@(resultado.Elegivel ? "verde" : "vermelho")" />
+            <Etiqueta Texto="@(resultado.Elegivel ? "Elegível" : "Não elegível")" Tom="@(resultado.Elegivel ? "success" : "danger")" />
         </p>
         @if (!resultado.Elegivel)
         {

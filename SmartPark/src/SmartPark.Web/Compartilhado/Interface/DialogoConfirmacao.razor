@@ -1,0 +1,19 @@
+@* Confirmação de exclusão. Equivale ao ConfirmDialog. *@
+<div class="modal-backdrop" role="presentation" @onmousedown="AoCancelar">
+    <div class="modal" role="dialog" aria-modal="true" @onmousedown:stopPropagation>
+        <button type="button" class="modal-close" @onclick="AoCancelar" aria-label="Fechar"><Icone Nome="X" Tamanho="18" /></button>
+        <h2>@Titulo</h2>
+        <p>@Descricao</p>
+        <div class="mt-6 flex justify-end gap-2">
+            <button type="button" class="button button-ghost" @onclick="AoCancelar">Cancelar</button>
+            <button type="button" class="button button-danger" @onclick="AoConfirmar">Excluir</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Titulo { get; set; } = "";
+    [Parameter] public string Descricao { get; set; } = "";
+    [Parameter] public EventCallback AoConfirmar { get; set; }
+    [Parameter] public EventCallback AoCancelar { get; set; }
+}

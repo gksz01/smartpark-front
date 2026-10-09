@@ -23,8 +23,8 @@
             <td>@pessoa.Documento</td>
             <td>@Rotulos.De(pessoa.Tipo)</td>
             <td>@Rotulos.De(pessoa.Perfil)</td>
-            <td><Etiqueta Texto="@(pessoa.Ativo ? "Ativa" : "Inativa")" Cor="@CoresStatus.DeAtivo(pessoa.Ativo)" /></td>
-            <td><AcoesLinha AoEditar="() => AbrirEdicao(pessoa)" AoExcluir="() => ExcluirAsync(pessoa)" /></td>
+            <td><Etiqueta Texto="@(pessoa.Ativo ? "Ativa" : "Inativa")" Tom="@CoresStatus.DeAtivo(pessoa.Ativo)" /></td>
+            <td><AcoesLinha Rotulo="registro" AoEditar="() => AbrirEdicao(pessoa)" AoExcluir="() => ExcluirAsync(pessoa)" /></td>
         </Linha>
     </TabelaDados>
 
@@ -57,7 +57,7 @@
         CampoFormulario.Texto("Documento", () => _formulario.Documento, valor => _formulario.Documento = valor, "Ex.: 123.456.789-01"),
         CampoFormulario.Selecao("Tipo", () => _formulario.Tipo, valor => _formulario.Tipo = valor, Sessao.Tenant!.TiposPessoa),
         CampoFormulario.Selecao("Perfil", () => _formulario.Perfil, valor => _formulario.Perfil = valor, Sessao.Tenant!.PerfisPermitidos),
-        CampoFormulario.Marcacao("Pessoa ativa", () => _formulario.Ativo, valor => _formulario.Ativo = valor),
+        CampoFormulario.Booleano("Pessoa ativa", () => _formulario.Ativo, valor => _formulario.Ativo = valor),
     ];
 
     protected override Task OnInitializedAsync() => CarregarAsync();

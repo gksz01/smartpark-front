@@ -1,0 +1,14 @@
+@* Explica a variabilidade da tela; só aparece no modo acadêmico. Equivale ao VariationInfo. *@
+@inject SessaoUsuario Sessao
+
+@if (Sessao.ModoAcademico)
+{
+    <aside class="variation-info">
+        <div class="variation-icon"><Icone Nome="Info" Tamanho="18" /></div>
+        <div><strong>Variabilidade desta tela</strong><p>@ChildContent</p></div>
+    </aside>
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

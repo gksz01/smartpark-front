@@ -1,0 +1,11 @@
+@* Equivale ao EmptyState. *@
+<div class="empty-state">
+    <div class="empty-icon"><Icone Nome="Info" Tamanho="22" /></div>
+    <strong>@Titulo</strong>
+    <p>@Descricao</p>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Titulo { get; set; } = "";
+    [Parameter] public string Descricao { get; set; } = "";
+}

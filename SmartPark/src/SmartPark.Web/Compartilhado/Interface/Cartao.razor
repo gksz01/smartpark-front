@@ -1,0 +1,7 @@
+@* Equivale ao Card. *@
+<section class="card @Classe">@ChildContent</section>
+
+@code {
+    [Parameter] public string Classe { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

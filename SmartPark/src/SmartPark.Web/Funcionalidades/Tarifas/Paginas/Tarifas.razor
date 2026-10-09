@@ -22,8 +22,8 @@
             <td>@tarifa.Nome</td>
             <td>@Rotulos.De(tarifa.TipoEstrategia)</td>
             <td>@tarifa.Descricao</td>
-            <td><Etiqueta Texto="@(tarifa.Ativa ? "Ativa" : "Inativa")" Cor="@CoresStatus.DeAtivo(tarifa.Ativa)" /></td>
-            <td><AcoesLinha AoEditar="() => AbrirEdicao(tarifa)" AoExcluir="() => ExcluirAsync(tarifa)" /></td>
+            <td><Etiqueta Texto="@(tarifa.Ativa ? "Ativa" : "Inativa")" Tom="@CoresStatus.DeAtivo(tarifa.Ativa)" /></td>
+            <td><AcoesLinha Rotulo="registro" AoEditar="() => AbrirEdicao(tarifa)" AoExcluir="() => ExcluirAsync(tarifa)" /></td>
         </Linha>
     </TabelaDados>
 
@@ -59,7 +59,7 @@
             () => _formulario.Valor, valor => _formulario.Valor = valor) with { Visivel = () => _formulario.Tipo != TipoEstrategiaTarifa.Isenta },
         CampoFormulario.Numero("Teto diário (R$, opcional)", () => _formulario.Teto, valor => _formulario.Teto = valor)
             with { Visivel = () => _formulario.Tipo == TipoEstrategiaTarifa.PorHora },
-        CampoFormulario.Marcacao("Tarifa ativa", () => _formulario.Ativa, valor => _formulario.Ativa = valor),
+        CampoFormulario.Booleano("Tarifa ativa", () => _formulario.Ativa, valor => _formulario.Ativa = valor),
     ];
 
     protected override Task OnInitializedAsync() => CarregarAsync();

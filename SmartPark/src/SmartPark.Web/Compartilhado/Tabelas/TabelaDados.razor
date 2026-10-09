@@ -1,32 +1,35 @@
 @typeparam TItem
-@* Tabela com cabeçalho, uma linha por item e mensagem quando a lista está vazia. *@
-@if (Itens is null)
-{
-    <p class="carregando">Carregando...</p>
-}
-else if (Itens.Count == 0)
-{
-    <p class="vazio">@MensagemVazia</p>
-}
-else
-{
-    <div class="tabela-rolagem">
-        <table class="tabela">
-            <thead><tr>@Cabecalho</tr></thead>
-            <tbody>
+@* Equivale ao DataTable: cabeçalho, uma linha por item e mensagem quando vazio. *@
+<div class="table-wrap">
+    <table>
+        <thead><tr>@Cabecalho</tr></thead>
+        <tbody>
+            @if (Itens is null)
+            {
+                <tr><td colspan="@Colunas" class="py-10 text-center text-slate-400">Carregando...</td></tr>
+            }
+            else if (Itens.Count == 0)
+            {
+                <tr><td colspan="@Colunas" class="py-10 text-center text-slate-400">@MensagemVazia</td></tr>
+            }
+            else
+            {
                 @foreach (var item in Itens)
                 {
                     <tr>@Linha(item)</tr>
                 }
-            </tbody>
-        </table>
-    </div>
-}
+            }
+        </tbody>
+    </table>
+</div>
 
 @code {
     /// <summary>null enquanto carrega.</summary>
     [Parameter] public IReadOnlyList<TItem>? Itens { get; set; }
     [Parameter, EditorRequired] public RenderFragment Cabecalho { get; set; } = default!;
     [Parameter, EditorRequired] public RenderFragment<TItem> Linha { get; set; } = default!;
-    [Parameter] public string MensagemVazia { get; set; } = "Nenhum registro cadastrado.";
+    [Parameter] public string MensagemVazia { get; set; } = "Nenhum registro encontrado.";
+
+    /// <summary>Quantidade de colunas, para a mensagem ocupar a linha inteira.</summary>
+    [Parameter] public int Colunas { get; set; } = 1;
 }

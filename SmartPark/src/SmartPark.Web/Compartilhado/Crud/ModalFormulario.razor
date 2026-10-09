@@ -1,28 +1,54 @@
-@* Modal com formulário, erro e botões Salvar/Cancelar. Equivale ao FormModal da versão React. *@
+@* Modal de formulário: sobretítulo, título, X, campos, erro e rodapé. Equivale ao FormModal. *@
 @if (Aberto)
 {
-    <div class="modal-fundo" @onclick="AoFechar">
-        <form class="modal" @onclick:stopPropagation @onsubmit="AoSalvar" @onsubmit:preventDefault>
-            <header>
-                <h2>@Titulo</h2>
-                <button type="button" class="botao-icone" title="Fechar" @onclick="AoFechar">✕</button>
-            </header>
-            <Mensagem Erro="@Erro" />
-            @ChildContent
-            <footer>
-                <button type="button" class="botao secundario" @onclick="AoFechar">Cancelar</button>
-                <button type="submit" class="botao" disabled="@Salvando">@(Salvando ? "Salvando..." : TextoSalvar)</button>
-            </footer>
+    <div class="modal-backdrop">
+        <form class="modal @Classe" role="dialog" aria-modal="true" @onsubmit="AoSalvar" @onsubmit:preventDefault>
+            <button type="button" class="modal-close" @onclick="AoFechar" aria-label="Fechar"><Icone Nome="X" Tamanho="18" /></button>
+            <p class="eyebrow">@Sobretitulo</p>
+            <h2>@Titulo</h2>
+            @if (!string.IsNullOrEmpty(Descricao))
+            {
+                <p>@Descricao</p>
+            }
+            <div class="@ClasseCorpo">@ChildContent</div>
+            @Extra
+            @if (!string.IsNullOrEmpty(Erro))
+            {
+                <div class="mt-5"><Mensagem Erro="@Erro" /></div>
+            }
+            @if (TextoCancelar is null)
+            {
+                <button type="submit" class="button button-primary mt-6 w-full justify-center" disabled="@Salvando">@TextoSalvar</button>
+            }
+            else
+            {
+                <div class="mt-7 flex justify-end gap-2">
+                    <button type="button" class="button button-ghost" @onclick="AoFechar">@TextoCancelar</button>
+                    <button type="submit" class="button button-primary" disabled="@Salvando">@TextoSalvar</button>
+                </div>
+            }
         </form>
     </div>
 }
 
 @code {
     [Parameter] public bool Aberto { get; set; }
+    [Parameter] public string Sobretitulo { get; set; } = "";
     [Parameter, EditorRequired] public string Titulo { get; set; } = "";
+    [Parameter] public string? Descricao { get; set; }
     [Parameter] public string? Erro { get; set; }
     [Parameter] public bool Salvando { get; set; }
     [Parameter] public string TextoSalvar { get; set; } = "Salvar";
+
+    /// <summary>Rótulo do botão de fechar no rodapé; null = só o botão de envio, em largura total.</summary>
+    [Parameter] public string? TextoCancelar { get; set; } = "Cancelar";
+    [Parameter] public string Classe { get; set; } = "";
+
+    /// <summary>Layout dos campos (padrão: um embaixo do outro).</summary>
+    [Parameter] public string ClasseCorpo { get; set; } = "mt-6 space-y-4";
+
+    /// <summary>Conteúdo depois dos campos e antes do erro (ex.: estimativa).</summary>
+    [Parameter] public RenderFragment? Extra { get; set; }
     [Parameter] public EventCallback AoSalvar { get; set; }
     [Parameter] public EventCallback AoFechar { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }

@@ -1,18 +1,27 @@
-<header class="cabecalho-pagina">
+@* Equivale ao PageHeader: sobretítulo, título, descrição e ação à direita. *@
+<header class="page-header">
     <div>
+        @if (!string.IsNullOrEmpty(Sobretitulo))
+        {
+            <p class="eyebrow">@Sobretitulo</p>
+        }
         <h1>@Titulo</h1>
         @if (!string.IsNullOrEmpty(Descricao))
         {
-            <p>@Descricao</p>
+            <p class="page-description">@Descricao</p>
         }
     </div>
-    <div class="cabecalho-acoes">@ChildContent</div>
+    @if (ChildContent is not null)
+    {
+        <div class="shrink-0">@ChildContent</div>
+    }
 </header>
 
 @code {
+    [Parameter] public string? Sobretitulo { get; set; }
     [Parameter, EditorRequired] public string Titulo { get; set; } = "";
     [Parameter] public string? Descricao { get; set; }
 
-    /// <summary>Botões à direita do título (ex.: "Novo veículo").</summary>
+    /// <summary>Ação à direita do título (ex.: botão "Novo veículo").</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 }

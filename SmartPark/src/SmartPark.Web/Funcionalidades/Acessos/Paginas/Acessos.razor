@@ -24,14 +24,14 @@
             <td><strong>@acesso.Identificador</strong></td>
             <td>@Rotulos.De(acesso.Direcao)</td>
             <td>
-                <Etiqueta Texto="@acesso.Status.ToString()" Cor="@CoresStatus.De(acesso.Status)" />
+                <Etiqueta Texto="@acesso.Status.ToString()" Tom="@CoresStatus.De(acesso.Status)" />
                 @if (!string.IsNullOrEmpty(acesso.MotivoNegacao))
                 {
                     <div class="detalhe">@acesso.MotivoNegacao</div>
                 }
             </td>
             <td>@(acesso.Manual ? "Manual" : "Automática")</td>
-            <td><AcoesLinha AoEditar="() => AbrirEdicao(acesso)" AoExcluir="() => ExcluirAsync(acesso)" /></td>
+            <td><AcoesLinha Rotulo="registro" AoEditar="() => AbrirEdicao(acesso)" AoExcluir="() => ExcluirAsync(acesso)" /></td>
         </Linha>
     </TabelaDados>
 

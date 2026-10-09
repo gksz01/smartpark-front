@@ -29,17 +29,17 @@
             <td>@Formatacao.FormatarHora(reserva.Hora)</td>
             <td>@reserva.DuracaoHoras h</td>
             <td>@Formatacao.FormatarMoeda(reserva.ValorEstimado)</td>
-            <td><Etiqueta Texto="@Rotulos.De(reserva.Status)" Cor="@CoresStatus.De(reserva.Status)" /></td>
+            <td><Etiqueta Texto="@Rotulos.De(reserva.Status)" Tom="@CoresStatus.De(reserva.Status)" /></td>
             <td>
                 @if (reserva.Status is StatusReserva.Pendente or StatusReserva.Confirmada)
                 {
-                    <AcoesLinha AoEditar="() => AbrirEdicao(reserva)">
+                    <AcoesLinha Rotulo="registro" AoEditar="() => AbrirEdicao(reserva)">
                         <button type="button" class="botao pequeno perigo-contorno" @onclick="() => CancelarAsync(reserva)">Cancelar</button>
                     </AcoesLinha>
                 }
                 else
                 {
-                    <AcoesLinha AoExcluir="() => ExcluirAsync(reserva)" />
+                    <AcoesLinha Rotulo="registro" AoExcluir="() => ExcluirAsync(reserva)" />
                 }
             </td>
         </Linha>

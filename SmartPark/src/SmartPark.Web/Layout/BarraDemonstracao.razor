@@ -1,0 +1,21 @@
+@* Barra do protótipo: tenant e perfil, modo acadêmico, restaurar dados e trocar contexto. Equivale ao DemoToolbar. *@
+@using SmartPark.Aplicacao.Demonstracao.Restaurar
+@inject SessaoUsuario Sessao
+@inject ExecutorCasosDeUso CasosDeUso
+
+<div class="demo-toolbar">
+    <div class="min-w-0"><span class="demo-dot"></span><strong>@Sessao.Tenant!.NomeCurto</strong><span class="hidden sm:inline"> · @Rotulos.De(Sessao.Perfil)</span></div>
+    <label class="academic-toggle">
+        <input type="checkbox" checked="@Sessao.ModoAcademico" @onchange="evento => Sessao.DefinirModoAcademico(evento.Value is true)" /><span></span><em>Modo acadêmico</em>
+    </label>
+    <button type="button" @onclick="RestaurarAsync" title="Restaurar dados da demonstração" aria-label="Restaurar dados da demonstração"><Icone Nome="RotateCcw" Tamanho="15" /></button>
+    <a href="/" title="Trocar cliente ou perfil" aria-label="Trocar cliente ou perfil"><Icone Nome="Settings2" Tamanho="16" /></a>
+</div>
+
+@code {
+    private async Task RestaurarAsync()
+    {
+        await CasosDeUso.ExecutarAsync((RestaurarDemonstracaoManipulador casoDeUso) => casoDeUso.ExecutarAsync(new()));
+        Sessao.InformarDadosRestaurados();
+    }
+}

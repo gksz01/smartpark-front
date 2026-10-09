@@ -1,30 +1,30 @@
-@* Botões Editar/Excluir de uma linha, com confirmação da exclusão. Equivale ao RowActions da versão React. *@
-<div class="acoes-linha">
+@* Botões Editar e Excluir de uma linha, com diálogo de confirmação. Equivale ao RowActions + ConfirmDialog. *@
+<div class="@Classe">
     @ChildContent
-    @if (_confirmando)
+    @if (AoEditar.HasDelegate)
     {
-        <span class="confirmacao">Excluir?</span>
-        <button type="button" class="botao pequeno perigo" @onclick="ConfirmarAsync">Sim</button>
-        <button type="button" class="botao pequeno secundario" @onclick="() => _confirmando = false">Não</button>
+        <button type="button" class="button button-secondary" @onclick="AoEditar" aria-label="@($"Editar {Rotulo}")"><Icone Nome="Edit3" Tamanho="16" /> Editar</button>
     }
-    else
+    @if (AoExcluir.HasDelegate)
     {
-        @if (AoEditar.HasDelegate)
-        {
-            <button type="button" class="botao pequeno secundario" @onclick="AoEditar">Editar</button>
-        }
-        @if (AoExcluir.HasDelegate)
-        {
-            <button type="button" class="botao pequeno perigo-contorno" @onclick="() => _confirmando = true">Excluir</button>
-        }
+        <button type="button" class="button button-ghost" @onclick="() => _confirmando = true" aria-label="@($"Excluir {Rotulo}")"><Icone Nome="Trash2" Tamanho="16" /> Excluir</button>
     }
 </div>
 
+@if (_confirmando)
+{
+    <DialogoConfirmacao Titulo="@($"Excluir {Rotulo}?")" Descricao="@DescricaoExclusao" AoConfirmar="ConfirmarAsync" AoCancelar="() => _confirmando = false" />
+}
+
 @code {
+    /// <summary>O que está na linha (ex.: "veículo BRA2E19"), usado nos rótulos e na confirmação.</summary>
+    [Parameter, EditorRequired] public string Rotulo { get; set; } = "";
+    [Parameter] public string DescricaoExclusao { get; set; } = "Esta ação não pode ser desfeita.";
     [Parameter] public EventCallback AoEditar { get; set; }
     [Parameter] public EventCallback AoExcluir { get; set; }
+    [Parameter] public string Classe { get; set; } = "flex gap-2";
 
-    /// <summary>Ações extras da linha (ex.: Cancelar reserva, Estornar), antes de Editar/Excluir.</summary>
+    /// <summary>Ações próprias do CRUD, antes de Editar (ex.: Cancelar reserva, Simular sensor).</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     private bool _confirmando;

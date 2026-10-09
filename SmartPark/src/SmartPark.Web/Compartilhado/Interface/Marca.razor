@@ -1,0 +1,19 @@
+@* Logo do tenant (white-label). Equivale ao Brand. *@
+@inject SessaoUsuario Sessao
+
+<div class="flex items-center gap-3">
+    <span class="brand-mark" aria-hidden="true">@(Tenant?.Logo ?? "SP")</span>
+    @if (!Compacta)
+    {
+        <div><strong class="block leading-tight">@(Tenant?.NomeCurto ?? "SmartPark")</strong><span class="text-xs text-slate-500">powered by SmartPark</span></div>
+    }
+</div>
+
+@code {
+    [Parameter] public bool Compacta { get; set; }
+
+    /// <summary>Por padrão, o tenant da sessão; a seleção mostra o tenant escolhido.</summary>
+    [Parameter] public DefinicaoTenant? Tenant { get; set; }
+
+    protected override void OnParametersSet() => Tenant ??= Sessao.Tenant;
+}

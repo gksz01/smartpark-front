@@ -24,10 +24,10 @@
             <td><strong>@vaga.Codigo</strong></td>
             <td>@vaga.Setor</td>
             <td>@Rotulos.De(vaga.Tipo)</td>
-            <td><Etiqueta Texto="@vaga.Status.ToString()" Cor="@CoresStatus.De(vaga.Status)" /></td>
+            <td><Etiqueta Texto="@vaga.Status.ToString()" Tom="@CoresStatus.De(vaga.Status)" /></td>
             <td class="detalhe">@vaga.Requisito</td>
             <td>
-                <AcoesLinha AoEditar="() => AbrirEdicao(vaga)" AoExcluir="() => ExcluirAsync(vaga)">
+                <AcoesLinha Rotulo="registro" AoEditar="() => AbrirEdicao(vaga)" AoExcluir="() => ExcluirAsync(vaga)">
                     @if (vaga.Status == StatusVaga.Ocupada)
                     {
                         <button type="button" class="botao pequeno secundario" @onclick="() => LerSensorAsync(vaga, TipoEventoSensor.Liberada)">Sensor: saiu</button>

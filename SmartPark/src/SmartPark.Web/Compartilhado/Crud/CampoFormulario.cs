@@ -9,7 +9,6 @@ public enum TipoCampo
     Numero,
     Data,
     Hora,
-    Marcacao,
     Selecao,
 }
 
@@ -29,7 +28,11 @@ public sealed record CampoFormulario(string Rotulo, TipoCampo Tipo, Func<string>
 {
     public IReadOnlyList<OpcaoSelecao> Opcoes { get; init; } = [];
     public string? Exemplo { get; init; }
+    public string? Dica { get; init; }
     public bool Desabilitado { get; init; }
+
+    /// <summary>Campos de texto e número são obrigatórios no formulário, salvo quando marcados como opcionais.</summary>
+    public bool Opcional { get; init; }
 
     /// <summary>Quando informado, o campo só aparece se a função devolver true (ex.: parcelas só no crédito).</summary>
     public Func<bool>? Visivel { get; init; }
@@ -53,8 +56,12 @@ public sealed record CampoFormulario(string Rotulo, TipoCampo Tipo, Func<string>
             () => ler().ToString("HH:mm", CultureInfo.InvariantCulture),
             texto => { if (TimeOnly.TryParse(texto, CultureInfo.InvariantCulture, out var hora)) gravar(hora); });
 
-    public static CampoFormulario Marcacao(string rotulo, Func<bool> ler, Action<bool> gravar) =>
-        new(rotulo, TipoCampo.Marcacao, () => ler() ? "true" : "false", texto => gravar(texto == "true"));
+    /// <summary>Sim/não exibido como seleção, como na versão React (ex.: Ativo / Inativo).</summary>
+    public static CampoFormulario Booleano(string rotulo, Func<bool> ler, Action<bool> gravar, string textoVerdadeiro = "Ativo", string textoFalso = "Inativo") =>
+        new(rotulo, TipoCampo.Selecao, () => ler() ? "true" : "false", texto => gravar(texto == "true"))
+        {
+            Opcoes = [new OpcaoSelecao("true", textoVerdadeiro), new OpcaoSelecao("false", textoFalso)],
+        };
 
     public static CampoFormulario Selecao<TEnum>(string rotulo, Func<TEnum> ler, Action<TEnum> gravar, IEnumerable<TEnum> opcoes)
         where TEnum : struct, Enum =>

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SmartPark.Aplicacao.Comum;
 using SmartPark.Dominio.Entidades;
 using SmartPark.Dominio.Enumeradores;
 using SmartPark.Dominio.Padroes.Estrategia.Pagamentos;
@@ -14,7 +15,7 @@ namespace SmartPark.Infraestrutura.Seed;
 /// Dados de demonstração. Os registros são criados pelas próprias classes do domínio
 /// (Factory Method para vagas e tarifas, Strategy para valores), como faria a aplicação.
 /// </summary>
-public class PopuladorBanco(SmartParkDbContext contexto)
+public class PopuladorBanco(SmartParkDbContext contexto) : IPopuladorBanco
 {
     /// <summary>Popula só as tabelas vazias e devolve os nomes das que foram populadas.</summary>
     public async Task<IReadOnlyList<string>> PopularTabelasVaziasAsync(CancellationToken cancellationToken = default)

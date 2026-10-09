@@ -1,9 +1,9 @@
-@* Etiqueta colorida para status (Livre, Aprovado, Negado...). *@
-<span class="etiqueta @Cor">@Texto</span>
+@* Etiqueta de status. Equivale ao StatusBadge. *@
+<span class="status status-@Tom">@Texto</span>
 
 @code {
     [Parameter, EditorRequired] public string Texto { get; set; } = "";
 
-    /// <summary>verde, amarelo, vermelho, azul ou cinza (classes de app.css).</summary>
-    [Parameter] public string Cor { get; set; } = "cinza";
+    /// <summary>success, warning, danger, info ou neutral (ver CoresStatus).</summary>
+    [Parameter] public string Tom { get; set; } = "neutral";
 }

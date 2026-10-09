@@ -25,8 +25,8 @@
             <td>@convenio.Nome</td>
             <td>@convenio.Beneficio</td>
             <td>@convenio.QuantidadeAtendimentos</td>
-            <td><Etiqueta Texto="@(convenio.Ativo ? "Ativo" : "Inativo")" Cor="@CoresStatus.DeAtivo(convenio.Ativo)" /></td>
-            <td><AcoesLinha AoEditar="() => AbrirEdicao(convenio)" AoExcluir="() => ExcluirAsync(convenio)" /></td>
+            <td><Etiqueta Texto="@(convenio.Ativo ? "Ativo" : "Inativo")" Tom="@CoresStatus.DeAtivo(convenio.Ativo)" /></td>
+            <td><AcoesLinha Rotulo="registro" AoEditar="() => AbrirEdicao(convenio)" AoExcluir="() => ExcluirAsync(convenio)" /></td>
         </Linha>
     </TabelaDados>
 
@@ -58,7 +58,7 @@
         CampoFormulario.Selecao("Tipo de benefício", () => _formulario.Tipo, valor => _formulario.Tipo = valor, Enum.GetValues<TipoBeneficio>()),
         CampoFormulario.Numero(_formulario.Tipo == TipoBeneficio.Percentual ? "Desconto (%)" : "Horas grátis", () => _formulario.Valor, valor => _formulario.Valor = valor)
             with { Visivel = () => _formulario.Tipo != TipoBeneficio.Isencao },
-        CampoFormulario.Marcacao("Convênio ativo", () => _formulario.Ativo, valor => _formulario.Ativo = valor),
+        CampoFormulario.Booleano("Convênio ativo", () => _formulario.Ativo, valor => _formulario.Ativo = valor),
     ];
 
     protected override Task OnInitializedAsync() => CarregarAsync();

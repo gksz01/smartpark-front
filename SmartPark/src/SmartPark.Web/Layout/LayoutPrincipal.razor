@@ -1,34 +1,57 @@
 @inherits LayoutComponentBase
-@using SmartPark.Dominio.LinhaDeProduto
 @implements IDisposable
 @inject SessaoUsuario Sessao
-@inject NavigationManager Navegacao
 
 @if (Sessao.Tenant is { } tenant)
 {
-    <div class="aplicacao" style="@EstiloTema(tenant.Tema)">
-        <aside class="menu-lateral">
-            <div class="marca">
-                <span class="logo">@tenant.Logo</span>
-                <div>
-                    <strong>@tenant.Nome</strong>
-                    <small>@Rotulos.De(Sessao.Perfil)</small>
+    <div style="@EstiloTema(tenant.Tema)">
+        @if (ItemMenu.UsaPortal(Sessao))
+        {
+            <div class="portal-shell">
+                <BarraDemonstracao />
+                <header class="portal-header"><Marca /><a class="header-exit" href="/"><Icone Nome="LogOut" Tamanho="17" /> <span>Trocar perfil</span></a></header>
+                <main class="portal-main" @key="Sessao.VersaoDados">@Body</main>
+                <nav class="bottom-nav" aria-label="Navegação principal">
+                    @foreach (var item in ItemMenu.Disponiveis(Sessao))
+                    {
+                        <NavLink href="@item.Rota" ActiveClass="active"><Icone Nome="@item.Icone" Tamanho="20" /><span>@item.Titulo</span></NavLink>
+                    }
+                </nav>
+            </div>
+        }
+        else
+        {
+            <div class="admin-shell">
+                <BarraDemonstracao />
+                <aside class="sidebar @(_menuAberto ? "sidebar-open" : "")">
+                    <div class="flex items-center justify-between"><Marca /><button type="button" class="lg:hidden" @onclick="() => _menuAberto = false" aria-label="Fechar menu"><Icone Nome="X" /></button></div>
+                    <nav aria-label="Navegação administrativa">
+                        @foreach (var item in ItemMenu.Disponiveis(Sessao))
+                        {
+                            <NavLink href="@item.Rota" ActiveClass="active" @onclick="() => _menuAberto = false"><Icone Nome="@item.Icone" Tamanho="19" />@item.Titulo</NavLink>
+                        }
+                    </nav>
+                    <div class="sidebar-profile">
+                        <div class="avatar">@Rotulos.De(Sessao.Perfil)[..2].ToUpperInvariant()</div>
+                        <div><strong>@Rotulos.De(Sessao.Perfil)</strong><span>@tenant.NomeCurto</span></div>
+                    </div>
+                    <a class="sidebar-switch" href="/"><Icone Nome="Settings2" Tamanho="17" /> Trocar contexto</a>
+                </aside>
+                @if (_menuAberto)
+                {
+                    <button type="button" class="sidebar-overlay" @onclick="() => _menuAberto = false" aria-label="Fechar menu"></button>
+                }
+                <div class="admin-content">
+                    <header class="admin-mobile-header"><button type="button" @onclick="() => _menuAberto = true" aria-label="Abrir menu"><Icone Nome="Menu" /></button><Marca Compacta="true" /><span></span></header>
+                    <main @key="Sessao.VersaoDados">@Body</main>
                 </div>
             </div>
-            <nav>
-                @foreach (var item in ItemMenu.Todos.Where(item => Sessao.PodeAcessar(item.Permissao, item.RecursoNecessario)))
-                {
-                    <NavLink href="@item.Rota" class="item-menu" ActiveClass="ativo">@item.Titulo</NavLink>
-                }
-            </nav>
-            <button type="button" class="botao secundario trocar" @onclick="TrocarCliente">Trocar cliente</button>
-        </aside>
-        <main class="conteudo">@Body</main>
+        }
     </div>
 }
 else
 {
-    <main class="conteudo sem-menu">@Body</main>
+    @Body
 }
 
 <div id="blazor-error-ui" data-nosnippet>
@@ -38,18 +61,16 @@ else
 </div>
 
 @code {
-    protected override void OnInitialized() => Sessao.Mudou += StateHasChanged;
+    private bool _menuAberto;
 
-    public void Dispose() => Sessao.Mudou -= StateHasChanged;
+    protected override void OnInitialized() => Sessao.Mudou += AoMudarSessao;
 
-    // White-label: as cores do tenant viram variáveis CSS usadas por app.css
-    private static string EstiloTema(TemaTenant tema) =>
-        $"--cor-primaria:{tema.Primaria};--cor-primaria-forte:{tema.PrimariaForte};--cor-secundaria:{tema.Secundaria};" +
-        $"--cor-destaque:{tema.Destaque};--cor-suave:{tema.Suave};--cor-superficie:{tema.Superficie}";
+    public void Dispose() => Sessao.Mudou -= AoMudarSessao;
 
-    private void TrocarCliente()
-    {
-        Sessao.Sair();
-        Navegacao.NavigateTo("/");
-    }
+    private void AoMudarSessao() => InvokeAsync(StateHasChanged);
+
+    /// <summary>White-label: as cores do tenant viram as mesmas variáveis CSS da versão React.</summary>
+    public static string EstiloTema(TemaTenant tema) =>
+        $"--primary:{tema.Primaria};--primaryStrong:{tema.PrimariaForte};--secondary:{tema.Secundaria};" +
+        $"--accent:{tema.Destaque};--soft:{tema.Suave};--surface:{tema.Superficie}";
 }
