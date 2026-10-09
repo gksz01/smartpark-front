@@ -1,0 +1,101 @@
+@page "/tarifas"
+@using SmartPark.Aplicacao.Tarifas
+@using SmartPark.Aplicacao.Tarifas.Atualizar
+@using SmartPark.Aplicacao.Tarifas.Criar
+@using SmartPark.Aplicacao.Tarifas.Excluir
+@using SmartPark.Aplicacao.Tarifas.Listar
+@inject SessaoUsuario Sessao
+@inject ExecutorCasosDeUso CasosDeUso
+
+<PageTitle>Tarifas · SmartPark</PageTitle>
+
+<PaginaProtegida Permissao="Permissao.Configuracao" Recurso="Recurso.Cobranca">
+    <CabecalhoPagina Titulo="Tarifas" Descricao="O tipo de cálculo escolhe a Strategy usada pela tarifa. Só uma tarifa fica ativa por vez.">
+        <button type="button" class="botao" @onclick="AbrirNovo">Nova tarifa</button>
+    </CabecalhoPagina>
+
+    <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
+
+    <TabelaDados Itens="_tarifas" MensagemVazia="Nenhuma tarifa cadastrada.">
+        <Cabecalho><th>Nome</th><th>Tipo de cálculo</th><th>Valores</th><th>Situação</th><th></th></Cabecalho>
+        <Linha Context="tarifa">
+            <td>@tarifa.Nome</td>
+            <td>@Rotulos.De(tarifa.TipoEstrategia)</td>
+            <td>@tarifa.Descricao</td>
+            <td><Etiqueta Texto="@(tarifa.Ativa ? "Ativa" : "Inativa")" Cor="@CoresStatus.DeAtivo(tarifa.Ativa)" /></td>
+            <td><AcoesLinha AoEditar="() => AbrirEdicao(tarifa)" AoExcluir="() => ExcluirAsync(tarifa)" /></td>
+        </Linha>
+    </TabelaDados>
+
+    <ModalFormulario Aberto="_estado.ModalAberto" Titulo="@(_estado.Editando ? "Editar tarifa" : "Nova tarifa")"
+                     Erro="@_estado.ErroFormulario" Salvando="_estado.Salvando" AoSalvar="SalvarAsync" AoFechar="_estado.Fechar">
+        <CamposFormulario Campos="Campos" />
+    </ModalFormulario>
+</PaginaProtegida>
+
+@code {
+    private readonly EstadoCrud _estado = new();
+    private IReadOnlyList<TarifaDto>? _tarifas;
+    private Formulario _formulario = new();
+
+    private sealed class Formulario
+    {
+        public string Nome { get; set; } = "";
+        public TipoEstrategiaTarifa Tipo { get; set; } = TipoEstrategiaTarifa.PorHora;
+        public decimal? Valor { get; set; }
+        public decimal? Teto { get; set; }
+        public bool Ativa { get; set; }
+
+        // Isenta não usa valor e só a tarifa por hora tem teto diário
+        public DadosTarifa ParaDados() => new(Nome, Tipo, Tipo == TipoEstrategiaTarifa.Isenta ? 0 : Valor ?? 0,
+            Tipo == TipoEstrategiaTarifa.PorHora ? Teto : null, Ativa);
+    }
+
+    private IReadOnlyList<CampoFormulario> Campos =>
+    [
+        CampoFormulario.Texto("Nome", () => _formulario.Nome, valor => _formulario.Nome = valor),
+        CampoFormulario.Selecao("Tipo de cálculo", () => _formulario.Tipo, valor => _formulario.Tipo = valor, Enum.GetValues<TipoEstrategiaTarifa>()),
+        CampoFormulario.Numero(_formulario.Tipo == TipoEstrategiaTarifa.Diaria ? "Valor da diária (R$)" : "Valor da hora (R$)",
+            () => _formulario.Valor, valor => _formulario.Valor = valor) with { Visivel = () => _formulario.Tipo != TipoEstrategiaTarifa.Isenta },
+        CampoFormulario.Numero("Teto diário (R$, opcional)", () => _formulario.Teto, valor => _formulario.Teto = valor)
+            with { Visivel = () => _formulario.Tipo == TipoEstrategiaTarifa.PorHora },
+        CampoFormulario.Marcacao("Tarifa ativa", () => _formulario.Ativa, valor => _formulario.Ativa = valor),
+    ];
+
+    protected override Task OnInitializedAsync() => CarregarAsync();
+
+    private async Task CarregarAsync()
+    {
+        if (!Sessao.PodeAcessar(Permissao.Configuracao, Recurso.Cobranca)) return;
+        var resultado = await CasosDeUso.ExecutarAsync((ListarTarifasManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId)));
+        if (resultado.Sucesso) _tarifas = resultado.Dados;
+        else _estado.InformarErro(resultado.Erro);
+    }
+
+    private void AbrirNovo()
+    {
+        _formulario = new();
+        _estado.AbrirNovo();
+    }
+
+    private void AbrirEdicao(TarifaDto tarifa)
+    {
+        _formulario = new() { Nome = tarifa.Nome, Tipo = tarifa.TipoEstrategia, Valor = tarifa.Valor, Teto = tarifa.ValorMaximoDiario, Ativa = tarifa.Ativa };
+        _estado.AbrirEdicao(tarifa.Id);
+    }
+
+    private async Task SalvarAsync()
+    {
+        _estado.Salvando = true;
+        var resultado = _estado.IdEditando is int id
+            ? await CasosDeUso.ExecutarAsync((AtualizarTarifaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, id, _formulario.ParaDados())))
+            : await CasosDeUso.ExecutarAsync((CriarTarifaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, _formulario.ParaDados())));
+        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, "Tarifa salva.")) await CarregarAsync();
+    }
+
+    private async Task ExcluirAsync(TarifaDto tarifa)
+    {
+        var resultado = await CasosDeUso.ExecutarAsync((ExcluirTarifaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, tarifa.Id)));
+        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, $"Tarifa {tarifa.Nome} excluída.")) await CarregarAsync();
+    }
+}

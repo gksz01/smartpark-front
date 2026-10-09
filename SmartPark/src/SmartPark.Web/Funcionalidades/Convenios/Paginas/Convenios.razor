@@ -1,0 +1,100 @@
+@page "/convenios"
+@using SmartPark.Aplicacao.Convenios
+@using SmartPark.Aplicacao.Convenios.Atualizar
+@using SmartPark.Aplicacao.Convenios.Criar
+@using SmartPark.Aplicacao.Convenios.Excluir
+@using SmartPark.Aplicacao.Convenios.Listar
+@using SmartPark.Web.Funcionalidades.Convenios.Componentes
+@inject SessaoUsuario Sessao
+@inject ExecutorCasosDeUso CasosDeUso
+
+<PageTitle>Convênios · SmartPark</PageTitle>
+
+<PaginaProtegida Permissao="Permissao.ConvenioMedico" Recurso="Recurso.ConvenioMedico">
+    <CabecalhoPagina Titulo="Convênios" Descricao="O benefício é aplicado no pagamento com a estratégia TarifaComConvenio.">
+        <button type="button" class="botao" @onclick="AbrirNovo">Novo convênio</button>
+    </CabecalhoPagina>
+
+    <ValidacaoAtendimento />
+
+    <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
+
+    <TabelaDados Itens="_convenios" MensagemVazia="Nenhum convênio cadastrado.">
+        <Cabecalho><th>Nome</th><th>Benefício</th><th>Atendimentos</th><th>Situação</th><th></th></Cabecalho>
+        <Linha Context="convenio">
+            <td>@convenio.Nome</td>
+            <td>@convenio.Beneficio</td>
+            <td>@convenio.QuantidadeAtendimentos</td>
+            <td><Etiqueta Texto="@(convenio.Ativo ? "Ativo" : "Inativo")" Cor="@CoresStatus.DeAtivo(convenio.Ativo)" /></td>
+            <td><AcoesLinha AoEditar="() => AbrirEdicao(convenio)" AoExcluir="() => ExcluirAsync(convenio)" /></td>
+        </Linha>
+    </TabelaDados>
+
+    <ModalFormulario Aberto="_estado.ModalAberto" Titulo="@(_estado.Editando ? "Editar convênio" : "Novo convênio")"
+                     Erro="@_estado.ErroFormulario" Salvando="_estado.Salvando" AoSalvar="SalvarAsync" AoFechar="_estado.Fechar">
+        <CamposFormulario Campos="Campos" />
+    </ModalFormulario>
+</PaginaProtegida>
+
+@code {
+    private readonly EstadoCrud _estado = new();
+    private IReadOnlyList<ConvenioDto>? _convenios;
+    private Formulario _formulario = new();
+
+    private sealed class Formulario
+    {
+        public string Nome { get; set; } = "";
+        public TipoBeneficio Tipo { get; set; } = TipoBeneficio.Percentual;
+        public decimal? Valor { get; set; }
+        public bool Ativo { get; set; } = true;
+
+        public DadosConvenio ParaDados() => new(Nome, Tipo, (int)(Valor ?? 0), Ativo);
+    }
+
+    // A isenção não usa valor; nos outros tipos o rótulo diz o que o número significa
+    private IReadOnlyList<CampoFormulario> Campos =>
+    [
+        CampoFormulario.Texto("Nome", () => _formulario.Nome, valor => _formulario.Nome = valor),
+        CampoFormulario.Selecao("Tipo de benefício", () => _formulario.Tipo, valor => _formulario.Tipo = valor, Enum.GetValues<TipoBeneficio>()),
+        CampoFormulario.Numero(_formulario.Tipo == TipoBeneficio.Percentual ? "Desconto (%)" : "Horas grátis", () => _formulario.Valor, valor => _formulario.Valor = valor)
+            with { Visivel = () => _formulario.Tipo != TipoBeneficio.Isencao },
+        CampoFormulario.Marcacao("Convênio ativo", () => _formulario.Ativo, valor => _formulario.Ativo = valor),
+    ];
+
+    protected override Task OnInitializedAsync() => CarregarAsync();
+
+    private async Task CarregarAsync()
+    {
+        if (!Sessao.PodeAcessar(Permissao.ConvenioMedico, Recurso.ConvenioMedico)) return;
+        var resultado = await CasosDeUso.ExecutarAsync((ListarConveniosManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId)));
+        if (resultado.Sucesso) _convenios = resultado.Dados;
+        else _estado.InformarErro(resultado.Erro);
+    }
+
+    private void AbrirNovo()
+    {
+        _formulario = new();
+        _estado.AbrirNovo();
+    }
+
+    private void AbrirEdicao(ConvenioDto convenio)
+    {
+        _formulario = new() { Nome = convenio.Nome, Tipo = convenio.TipoBeneficio, Valor = convenio.ValorBeneficio, Ativo = convenio.Ativo };
+        _estado.AbrirEdicao(convenio.Id);
+    }
+
+    private async Task SalvarAsync()
+    {
+        _estado.Salvando = true;
+        var resultado = _estado.IdEditando is int id
+            ? await CasosDeUso.ExecutarAsync((AtualizarConvenioManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, id, _formulario.ParaDados())))
+            : await CasosDeUso.ExecutarAsync((CriarConvenioManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, _formulario.ParaDados())));
+        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, "Convênio salvo.")) await CarregarAsync();
+    }
+
+    private async Task ExcluirAsync(ConvenioDto convenio)
+    {
+        var resultado = await CasosDeUso.ExecutarAsync((ExcluirConvenioManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, convenio.Id)));
+        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, $"Convênio {convenio.Nome} excluído.")) await CarregarAsync();
+    }
+}

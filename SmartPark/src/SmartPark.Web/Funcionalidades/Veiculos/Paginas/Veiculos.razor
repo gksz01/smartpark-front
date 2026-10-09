@@ -1,0 +1,116 @@
+@page "/veiculos"
+@using SmartPark.Aplicacao.Veiculos
+@using SmartPark.Aplicacao.Veiculos.Atualizar
+@using SmartPark.Aplicacao.Veiculos.Criar
+@using SmartPark.Aplicacao.Veiculos.Excluir
+@using SmartPark.Aplicacao.Veiculos.Listar
+@inject SessaoUsuario Sessao
+@inject ExecutorCasosDeUso CasosDeUso
+
+<PageTitle>Veículos · SmartPark</PageTitle>
+
+<PaginaProtegida Permissao="Permissao.Veiculos">
+    <CabecalhoPagina Titulo="Veículos" Descricao="Veículos cadastrados neste cliente.">
+        <button type="button" class="botao" @onclick="AbrirNovo">Novo veículo</button>
+    </CabecalhoPagina>
+
+    <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
+
+    <TabelaDados Itens="_veiculos" MensagemVazia="Nenhum veículo cadastrado.">
+        <Cabecalho>
+            <th>Apelido</th><th>Placa</th><th>Modelo</th><th>Cor</th>
+            @foreach (var campo in Sessao.Tenant!.CamposVeiculo)
+            {
+                <th>@campo.Rotulo</th>
+            }
+            <th></th>
+        </Cabecalho>
+        <Linha Context="veiculo">
+            <td>@veiculo.Apelido</td>
+            <td><strong>@veiculo.PlacaFormatada</strong></td>
+            <td>@veiculo.Modelo</td>
+            <td>@veiculo.Cor</td>
+            @foreach (var campo in Sessao.Tenant!.CamposVeiculo)
+            {
+                <td>@(campo.Chave == "unidade" ? veiculo.Unidade : veiculo.TagRfid)</td>
+            }
+            <td><AcoesLinha AoEditar="() => AbrirEdicao(veiculo)" AoExcluir="() => ExcluirAsync(veiculo)" /></td>
+        </Linha>
+    </TabelaDados>
+
+    <ModalFormulario Aberto="_estado.ModalAberto" Titulo="@(_estado.Editando ? "Editar veículo" : "Novo veículo")"
+                     Erro="@_estado.ErroFormulario" Salvando="_estado.Salvando" AoSalvar="SalvarAsync" AoFechar="_estado.Fechar">
+        <CamposFormulario Campos="Campos" />
+    </ModalFormulario>
+</PaginaProtegida>
+
+@code {
+    private readonly EstadoCrud _estado = new();
+    private IReadOnlyList<VeiculoDto>? _veiculos;
+    private Formulario _formulario = new();
+
+    private sealed class Formulario
+    {
+        public string Apelido { get; set; } = "";
+        public string Placa { get; set; } = "";
+        public string Modelo { get; set; } = "";
+        public string Cor { get; set; } = "";
+        public string Unidade { get; set; } = "";
+        public string TagRfid { get; set; } = "";
+
+        public DadosVeiculo ParaDados() => new(Apelido, Placa, Modelo, Cor, Unidade, TagRfid);
+    }
+
+    // Os campos fixos e, depois, os campos extras que a LPS define para este tenant
+    private IReadOnlyList<CampoFormulario> Campos =>
+    [
+        CampoFormulario.Texto("Apelido", () => _formulario.Apelido, valor => _formulario.Apelido = valor, "Ex.: Meu carro"),
+        CampoFormulario.Texto("Placa", () => _formulario.Placa, valor => _formulario.Placa = valor, "Ex.: ABC1D23"),
+        CampoFormulario.Texto("Modelo", () => _formulario.Modelo, valor => _formulario.Modelo = valor),
+        CampoFormulario.Texto("Cor", () => _formulario.Cor, valor => _formulario.Cor = valor),
+        .. Sessao.Tenant!.CamposVeiculo.Select(campo => campo.Chave == "unidade"
+            ? CampoFormulario.Texto(campo.Rotulo, () => _formulario.Unidade, valor => _formulario.Unidade = valor, campo.Exemplo)
+            : CampoFormulario.Texto(campo.Rotulo, () => _formulario.TagRfid, valor => _formulario.TagRfid = valor, campo.Exemplo)),
+    ];
+
+    protected override Task OnInitializedAsync() => CarregarAsync();
+
+    private async Task CarregarAsync()
+    {
+        if (!Sessao.Conectado) return;
+        var resultado = await CasosDeUso.ExecutarAsync((ListarVeiculosManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId)));
+        if (resultado.Sucesso) _veiculos = resultado.Dados;
+        else _estado.InformarErro(resultado.Erro);
+    }
+
+    private void AbrirNovo()
+    {
+        _formulario = new();
+        _estado.AbrirNovo();
+    }
+
+    private void AbrirEdicao(VeiculoDto veiculo)
+    {
+        _formulario = new()
+        {
+            Apelido = veiculo.Apelido, Placa = veiculo.Placa, Modelo = veiculo.Modelo, Cor = veiculo.Cor,
+            Unidade = veiculo.Unidade ?? "", TagRfid = veiculo.TagRfid ?? "",
+        };
+        _estado.AbrirEdicao(veiculo.Id);
+    }
+
+    private async Task SalvarAsync()
+    {
+        _estado.Salvando = true;
+        var resultado = _estado.IdEditando is int id
+            ? await CasosDeUso.ExecutarAsync((AtualizarVeiculoManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, id, _formulario.ParaDados())))
+            : await CasosDeUso.ExecutarAsync((CriarVeiculoManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, _formulario.ParaDados())));
+        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, "Veículo salvo.")) await CarregarAsync();
+    }
+
+    private async Task ExcluirAsync(VeiculoDto veiculo)
+    {
+        var resultado = await CasosDeUso.ExecutarAsync((ExcluirVeiculoManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, veiculo.Id)));
+        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, $"Veículo {veiculo.PlacaFormatada} excluído.")) await CarregarAsync();
+    }
+}

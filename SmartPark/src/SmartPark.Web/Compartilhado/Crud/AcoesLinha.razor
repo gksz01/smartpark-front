@@ -1,0 +1,37 @@
+@* Botões Editar/Excluir de uma linha, com confirmação da exclusão. Equivale ao RowActions da versão React. *@
+<div class="acoes-linha">
+    @ChildContent
+    @if (_confirmando)
+    {
+        <span class="confirmacao">Excluir?</span>
+        <button type="button" class="botao pequeno perigo" @onclick="ConfirmarAsync">Sim</button>
+        <button type="button" class="botao pequeno secundario" @onclick="() => _confirmando = false">Não</button>
+    }
+    else
+    {
+        @if (AoEditar.HasDelegate)
+        {
+            <button type="button" class="botao pequeno secundario" @onclick="AoEditar">Editar</button>
+        }
+        @if (AoExcluir.HasDelegate)
+        {
+            <button type="button" class="botao pequeno perigo-contorno" @onclick="() => _confirmando = true">Excluir</button>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback AoEditar { get; set; }
+    [Parameter] public EventCallback AoExcluir { get; set; }
+
+    /// <summary>Ações extras da linha (ex.: Cancelar reserva, Estornar), antes de Editar/Excluir.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool _confirmando;
+
+    private async Task ConfirmarAsync()
+    {
+        _confirmando = false;
+        await AoExcluir.InvokeAsync();
+    }
+}

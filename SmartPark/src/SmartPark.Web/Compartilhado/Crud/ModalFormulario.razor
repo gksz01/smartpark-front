@@ -1,0 +1,29 @@
+@* Modal com formulário, erro e botões Salvar/Cancelar. Equivale ao FormModal da versão React. *@
+@if (Aberto)
+{
+    <div class="modal-fundo" @onclick="AoFechar">
+        <form class="modal" @onclick:stopPropagation @onsubmit="AoSalvar" @onsubmit:preventDefault>
+            <header>
+                <h2>@Titulo</h2>
+                <button type="button" class="botao-icone" title="Fechar" @onclick="AoFechar">✕</button>
+            </header>
+            <Mensagem Erro="@Erro" />
+            @ChildContent
+            <footer>
+                <button type="button" class="botao secundario" @onclick="AoFechar">Cancelar</button>
+                <button type="submit" class="botao" disabled="@Salvando">@(Salvando ? "Salvando..." : TextoSalvar)</button>
+            </footer>
+        </form>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Aberto { get; set; }
+    [Parameter, EditorRequired] public string Titulo { get; set; } = "";
+    [Parameter] public string? Erro { get; set; }
+    [Parameter] public bool Salvando { get; set; }
+    [Parameter] public string TextoSalvar { get; set; } = "Salvar";
+    [Parameter] public EventCallback AoSalvar { get; set; }
+    [Parameter] public EventCallback AoFechar { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

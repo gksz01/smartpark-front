@@ -1,0 +1,24 @@
+@* Campo de seleção com rótulo. Equivale ao SelectField da versão React. *@
+<label class="campo">
+    <span>@Rotulo</span>
+    <select value="@Valor" disabled="@Desabilitado" @onchange="AoMudar">
+        @if (!Opcoes.Any(opcao => opcao.Valor == Valor))
+        {
+            <option value="">Selecione...</option>
+        }
+        @foreach (var opcao in Opcoes)
+        {
+            <option value="@opcao.Valor">@opcao.Texto</option>
+        }
+    </select>
+</label>
+
+@code {
+    [Parameter, EditorRequired] public string Rotulo { get; set; } = "";
+    [Parameter] public string Valor { get; set; } = "";
+    [Parameter] public EventCallback<string> ValorChanged { get; set; }
+    [Parameter] public IReadOnlyList<OpcaoSelecao> Opcoes { get; set; } = [];
+    [Parameter] public bool Desabilitado { get; set; }
+
+    private Task AoMudar(ChangeEventArgs evento) => ValorChanged.InvokeAsync(evento.Value?.ToString() ?? "");
+}

@@ -1,0 +1,43 @@
+@using SmartPark.Aplicacao.Convenios.ValidarAtendimento
+@inject SessaoUsuario Sessao
+@inject ExecutorCasosDeUso CasosDeUso
+
+<section class="painel">
+    <h2>Validar atendimento</h2>
+    <form class="linha-formulario" @onsubmit="ValidarAsync" @onsubmit:preventDefault>
+        <label class="campo">
+            <span>Número do atendimento</span>
+            <input @bind="_numero" placeholder="Ex.: ATD-48291" />
+        </label>
+        <button type="submit" class="botao">Validar</button>
+    </form>
+
+    @if (_erro is not null)
+    {
+        <Mensagem Erro="@_erro" />
+    }
+    else if (_resultado is { } resultado)
+    {
+        <p>
+            <strong>@resultado.Paciente</strong> · @resultado.Convenio · @resultado.Beneficio
+            <Etiqueta Texto="@(resultado.Elegivel ? "Elegível" : "Não elegível")" Cor="@(resultado.Elegivel ? "verde" : "vermelho")" />
+        </p>
+        @if (!resultado.Elegivel)
+        {
+            <p class="detalhe">@resultado.Motivo</p>
+        }
+    }
+</section>
+
+@code {
+    private string _numero = "";
+    private ElegibilidadeDto? _resultado;
+    private string? _erro;
+
+    /// <summary>Só consulta a elegibilidade; o benefício é consumido no pagamento.</summary>
+    private async Task ValidarAsync()
+    {
+        var resultado = await CasosDeUso.ExecutarAsync((ValidarAtendimentoManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, _numero)));
+        (_resultado, _erro) = (resultado.Dados, resultado.Erro);
+    }
+}

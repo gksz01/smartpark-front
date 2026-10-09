@@ -1,0 +1,99 @@
+@page "/pessoas"
+@using SmartPark.Aplicacao.Pessoas
+@using SmartPark.Aplicacao.Pessoas.Atualizar
+@using SmartPark.Aplicacao.Pessoas.Criar
+@using SmartPark.Aplicacao.Pessoas.Excluir
+@using SmartPark.Aplicacao.Pessoas.Listar
+@inject SessaoUsuario Sessao
+@inject ExecutorCasosDeUso CasosDeUso
+
+<PageTitle>Pessoas · SmartPark</PageTitle>
+
+<PaginaProtegida Permissao="Permissao.Usuarios">
+    <CabecalhoPagina Titulo="Pessoas" Descricao="Os tipos e perfis disponíveis dependem do cliente.">
+        <button type="button" class="botao" @onclick="AbrirNovo">Nova pessoa</button>
+    </CabecalhoPagina>
+
+    <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
+
+    <TabelaDados Itens="_pessoas" MensagemVazia="Nenhuma pessoa cadastrada.">
+        <Cabecalho><th>Nome</th><th>Documento</th><th>Tipo</th><th>Perfil</th><th>Situação</th><th></th></Cabecalho>
+        <Linha Context="pessoa">
+            <td>@pessoa.Nome</td>
+            <td>@pessoa.Documento</td>
+            <td>@Rotulos.De(pessoa.Tipo)</td>
+            <td>@Rotulos.De(pessoa.Perfil)</td>
+            <td><Etiqueta Texto="@(pessoa.Ativo ? "Ativa" : "Inativa")" Cor="@CoresStatus.DeAtivo(pessoa.Ativo)" /></td>
+            <td><AcoesLinha AoEditar="() => AbrirEdicao(pessoa)" AoExcluir="() => ExcluirAsync(pessoa)" /></td>
+        </Linha>
+    </TabelaDados>
+
+    <ModalFormulario Aberto="_estado.ModalAberto" Titulo="@(_estado.Editando ? "Editar pessoa" : "Nova pessoa")"
+                     Erro="@_estado.ErroFormulario" Salvando="_estado.Salvando" AoSalvar="SalvarAsync" AoFechar="_estado.Fechar">
+        <CamposFormulario Campos="Campos" />
+    </ModalFormulario>
+</PaginaProtegida>
+
+@code {
+    private readonly EstadoCrud _estado = new();
+    private IReadOnlyList<PessoaDto>? _pessoas;
+    private Formulario _formulario = new();
+
+    private sealed class Formulario
+    {
+        public string Nome { get; set; } = "";
+        public string Documento { get; set; } = "";
+        public TipoPessoa Tipo { get; set; }
+        public Perfil Perfil { get; set; }
+        public bool Ativo { get; set; } = true;
+
+        public DadosPessoa ParaDados() => new(Nome, Documento, Tipo, Perfil, Ativo);
+    }
+
+    // As opções de tipo e perfil vêm da definição do tenant (LPS)
+    private IReadOnlyList<CampoFormulario> Campos =>
+    [
+        CampoFormulario.Texto("Nome", () => _formulario.Nome, valor => _formulario.Nome = valor),
+        CampoFormulario.Texto("Documento", () => _formulario.Documento, valor => _formulario.Documento = valor, "Ex.: 123.456.789-01"),
+        CampoFormulario.Selecao("Tipo", () => _formulario.Tipo, valor => _formulario.Tipo = valor, Sessao.Tenant!.TiposPessoa),
+        CampoFormulario.Selecao("Perfil", () => _formulario.Perfil, valor => _formulario.Perfil = valor, Sessao.Tenant!.PerfisPermitidos),
+        CampoFormulario.Marcacao("Pessoa ativa", () => _formulario.Ativo, valor => _formulario.Ativo = valor),
+    ];
+
+    protected override Task OnInitializedAsync() => CarregarAsync();
+
+    private async Task CarregarAsync()
+    {
+        if (!Sessao.Conectado) return;
+        var resultado = await CasosDeUso.ExecutarAsync((ListarPessoasManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId)));
+        if (resultado.Sucesso) _pessoas = resultado.Dados;
+        else _estado.InformarErro(resultado.Erro);
+    }
+
+    private void AbrirNovo()
+    {
+        _formulario = new() { Tipo = Sessao.Tenant!.TiposPessoa[0], Perfil = Sessao.Tenant!.PerfisPermitidos[0] };
+        _estado.AbrirNovo();
+    }
+
+    private void AbrirEdicao(PessoaDto pessoa)
+    {
+        _formulario = new() { Nome = pessoa.Nome, Documento = pessoa.Documento, Tipo = pessoa.Tipo, Perfil = pessoa.Perfil, Ativo = pessoa.Ativo };
+        _estado.AbrirEdicao(pessoa.Id);
+    }
+
+    private async Task SalvarAsync()
+    {
+        _estado.Salvando = true;
+        var resultado = _estado.IdEditando is int id
+            ? await CasosDeUso.ExecutarAsync((AtualizarPessoaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, id, _formulario.ParaDados())))
+            : await CasosDeUso.ExecutarAsync((CriarPessoaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, _formulario.ParaDados())));
+        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, "Pessoa salva.")) await CarregarAsync();
+    }
+
+    private async Task ExcluirAsync(PessoaDto pessoa)
+    {
+        var resultado = await CasosDeUso.ExecutarAsync((ExcluirPessoaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, pessoa.Id)));
+        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, $"{pessoa.Nome} excluída.")) await CarregarAsync();
+    }
+}

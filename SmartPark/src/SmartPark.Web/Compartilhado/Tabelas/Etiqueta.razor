@@ -1,0 +1,9 @@
+@* Etiqueta colorida para status (Livre, Aprovado, Negado...). *@
+<span class="etiqueta @Cor">@Texto</span>
+
+@code {
+    [Parameter, EditorRequired] public string Texto { get; set; } = "";
+
+    /// <summary>verde, amarelo, vermelho, azul ou cinza (classes de app.css).</summary>
+    [Parameter] public string Cor { get; set; } = "cinza";
+}

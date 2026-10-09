@@ -1,0 +1,28 @@
+@* Só mostra a tela se o perfil tiver a permissão e o tenant tiver o recurso. Equivale ao ProtectedRoute/FeatureGate. *@
+@inject SessaoUsuario Sessao
+
+@if (!Sessao.Conectado)
+{
+    <div class="aviso-acesso">
+        <h1>Escolha um cliente</h1>
+        <p>Selecione o cliente e o perfil para usar o SmartPark.</p>
+        <a class="botao" href="/">Ir para a seleção</a>
+    </div>
+}
+else if (!Sessao.PodeAcessar(Permissao, Recurso))
+{
+    <div class="aviso-acesso">
+        <h1>Acesso indisponível</h1>
+        <p>Esta tela não está disponível para o perfil @Rotulos.De(Sessao.Perfil) em @Sessao.Tenant!.Nome.</p>
+    </div>
+}
+else
+{
+    @ChildContent
+}
+
+@code {
+    [Parameter, EditorRequired] public Permissao Permissao { get; set; }
+    [Parameter] public Recurso? Recurso { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

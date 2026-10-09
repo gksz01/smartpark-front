@@ -1,0 +1,17 @@
+@* Notificações criadas pelos observadores (Observer) na última operação. *@
+@if (Itens.Count > 0)
+{
+    <section class="notificacoes">
+        <strong>Notificações</strong>
+        <ul>
+            @foreach (var notificacao in Itens)
+            {
+                <li>@notificacao</li>
+            }
+        </ul>
+    </section>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<string> Itens { get; set; } = [];
+}

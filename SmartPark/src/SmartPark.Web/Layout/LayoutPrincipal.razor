@@ -1,0 +1,55 @@
+@inherits LayoutComponentBase
+@using SmartPark.Dominio.LinhaDeProduto
+@implements IDisposable
+@inject SessaoUsuario Sessao
+@inject NavigationManager Navegacao
+
+@if (Sessao.Tenant is { } tenant)
+{
+    <div class="aplicacao" style="@EstiloTema(tenant.Tema)">
+        <aside class="menu-lateral">
+            <div class="marca">
+                <span class="logo">@tenant.Logo</span>
+                <div>
+                    <strong>@tenant.Nome</strong>
+                    <small>@Rotulos.De(Sessao.Perfil)</small>
+                </div>
+            </div>
+            <nav>
+                @foreach (var item in ItemMenu.Todos.Where(item => Sessao.PodeAcessar(item.Permissao, item.RecursoNecessario)))
+                {
+                    <NavLink href="@item.Rota" class="item-menu" ActiveClass="ativo">@item.Titulo</NavLink>
+                }
+            </nav>
+            <button type="button" class="botao secundario trocar" @onclick="TrocarCliente">Trocar cliente</button>
+        </aside>
+        <main class="conteudo">@Body</main>
+    </div>
+}
+else
+{
+    <main class="conteudo sem-menu">@Body</main>
+}
+
+<div id="blazor-error-ui" data-nosnippet>
+    Ocorreu um erro inesperado.
+    <a href="." class="reload">Recarregar</a>
+    <span class="dismiss">✕</span>
+</div>
+
+@code {
+    protected override void OnInitialized() => Sessao.Mudou += StateHasChanged;
+
+    public void Dispose() => Sessao.Mudou -= StateHasChanged;
+
+    // White-label: as cores do tenant viram variáveis CSS usadas por app.css
+    private static string EstiloTema(TemaTenant tema) =>
+        $"--cor-primaria:{tema.Primaria};--cor-primaria-forte:{tema.PrimariaForte};--cor-secundaria:{tema.Secundaria};" +
+        $"--cor-destaque:{tema.Destaque};--cor-suave:{tema.Suave};--cor-superficie:{tema.Superficie}";
+
+    private void TrocarCliente()
+    {
+        Sessao.Sair();
+        Navegacao.NavigateTo("/");
+    }
+}

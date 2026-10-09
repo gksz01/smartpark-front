@@ -1,0 +1,18 @@
+<header class="cabecalho-pagina">
+    <div>
+        <h1>@Titulo</h1>
+        @if (!string.IsNullOrEmpty(Descricao))
+        {
+            <p>@Descricao</p>
+        }
+    </div>
+    <div class="cabecalho-acoes">@ChildContent</div>
+</header>
+
+@code {
+    [Parameter, EditorRequired] public string Titulo { get; set; } = "";
+    [Parameter] public string? Descricao { get; set; }
+
+    /// <summary>Botões à direita do título (ex.: "Novo veículo").</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -1,0 +1,14 @@
+@* Mensagem de sucesso ou de erro. Não aparece quando as duas estão vazias. *@
+@if (!string.IsNullOrEmpty(Erro))
+{
+    <div class="mensagem erro" role="alert">@Erro</div>
+}
+else if (!string.IsNullOrEmpty(Sucesso))
+{
+    <div class="mensagem sucesso" role="status">@Sucesso</div>
+}
+
+@code {
+    [Parameter] public string? Sucesso { get; set; }
+    [Parameter] public string? Erro { get; set; }
+}

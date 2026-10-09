@@ -1,0 +1,128 @@
+@page "/pagamentos"
+@using SmartPark.Aplicacao.Pagamentos
+@using SmartPark.Aplicacao.Pagamentos.Criar
+@using SmartPark.Aplicacao.Pagamentos.Estornar
+@using SmartPark.Aplicacao.Pagamentos.Excluir
+@using SmartPark.Aplicacao.Pagamentos.Listar
+@using SmartPark.Aplicacao.Veiculos.Listar
+@using SmartPark.Dominio.Padroes.Estrategia.Pagamentos
+@inject SessaoUsuario Sessao
+@inject ExecutorCasosDeUso CasosDeUso
+
+<PageTitle>Pagamentos · SmartPark</PageTitle>
+
+<PaginaProtegida Permissao="Permissao.Portal" Recurso="Recurso.Cobranca">
+    <CabecalhoPagina Titulo="Pagamentos" Descricao="O valor é calculado pela tarifa ativa; a forma de pagamento escolhe a Strategy (Pix, Crédito ou Débito).">
+        <button type="button" class="botao" @onclick="AbrirNovoAsync">Novo pagamento</button>
+    </CabecalhoPagina>
+
+    <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
+
+    <TabelaDados Itens="_pagamentos" MensagemVazia="Nenhum pagamento registrado.">
+        <Cabecalho><th>Data</th><th>Veículo</th><th>Duração</th><th>Valor</th><th>Cobrado</th><th>Forma</th><th>Status</th><th>Comprovante</th><th></th></Cabecalho>
+        <Linha Context="pagamento">
+            <td>@pagamento.CriadoEm.ToString("dd/MM HH:mm")</td>
+            <td>@pagamento.Veiculo</td>
+            <td>@pagamento.DuracaoHoras h</td>
+            <td>
+                @Formatacao.FormatarMoeda(pagamento.Valor)
+                @if (pagamento.Convenio is not null)
+                {
+                    <div class="detalhe">@pagamento.Convenio (@pagamento.NumeroAtendimento) · tarifa @Formatacao.FormatarMoeda(pagamento.ValorTarifa)</div>
+                }
+            </td>
+            <td>@Formatacao.FormatarMoeda(pagamento.ValorCobrado)</td>
+            <td>@Rotulos.De(pagamento.Forma)<div class="detalhe">@pagamento.Detalhe</div></td>
+            <td><Etiqueta Texto="@pagamento.Status.ToString()" Cor="@CoresStatus.De(pagamento.Status)" /></td>
+            <td><code>@pagamento.Comprovante</code></td>
+            <td>
+                @if (pagamento.Status == StatusPagamento.Aprovado)
+                {
+                    <AcoesLinha>
+                        <button type="button" class="botao pequeno perigo-contorno" @onclick="() => EstornarAsync(pagamento)">Estornar</button>
+                    </AcoesLinha>
+                }
+                else if (pagamento.Status == StatusPagamento.Estornado)
+                {
+                    <AcoesLinha AoExcluir="() => ExcluirAsync(pagamento)" />
+                }
+            </td>
+        </Linha>
+    </TabelaDados>
+
+    <ModalFormulario Aberto="_estado.ModalAberto" Titulo="Novo pagamento" TextoSalvar="Pagar"
+                     Erro="@_estado.ErroFormulario" Salvando="_estado.Salvando" AoSalvar="PagarAsync" AoFechar="_estado.Fechar">
+        <CamposFormulario Campos="Campos" />
+    </ModalFormulario>
+</PaginaProtegida>
+
+@code {
+    private static readonly IReadOnlyList<OpcaoSelecao> OpcoesParcelas = Enumerable.Range(1, PagamentoCredito.MaximoParcelas)
+        .Select(parcelas => new OpcaoSelecao(parcelas.ToString(), parcelas == 1 ? "À vista" : $"{parcelas}x (taxa de 5%)")).ToList();
+
+    private readonly EstadoCrud _estado = new();
+    private IReadOnlyList<PagamentoDto>? _pagamentos;
+    private IReadOnlyList<OpcaoSelecao> _veiculos = [];
+    private Formulario _formulario = new();
+
+    private sealed class Formulario
+    {
+        public int VeiculoId { get; set; }
+        public decimal? Duracao { get; set; } = 2;
+        public FormaPagamento Forma { get; set; } = FormaPagamento.Pix;
+        public int Parcelas { get; set; } = 1;
+        public string NumeroAtendimento { get; set; } = "";
+    }
+
+    // Parcelas só no crédito; número do atendimento só em tenants com Convênio médico (LPS)
+    private IReadOnlyList<CampoFormulario> Campos =>
+    [
+        CampoFormulario.Selecao("Veículo", () => _formulario.VeiculoId, valor => _formulario.VeiculoId = valor, _veiculos),
+        CampoFormulario.Numero("Duração (horas)", () => _formulario.Duracao, valor => _formulario.Duracao = valor),
+        CampoFormulario.Selecao("Forma de pagamento", () => _formulario.Forma, valor => _formulario.Forma = valor, Enum.GetValues<FormaPagamento>()),
+        CampoFormulario.Selecao("Parcelas", () => _formulario.Parcelas, valor => _formulario.Parcelas = valor, OpcoesParcelas)
+            with { Visivel = () => _formulario.Forma == FormaPagamento.Credito },
+        CampoFormulario.Texto("Número do atendimento (opcional)", () => _formulario.NumeroAtendimento, valor => _formulario.NumeroAtendimento = valor, "Ex.: ATD-48291")
+            with { Visivel = () => Sessao.Tenant!.PossuiRecurso(Recurso.ConvenioMedico) },
+    ];
+
+    protected override Task OnInitializedAsync() => CarregarAsync();
+
+    private async Task CarregarAsync()
+    {
+        if (!Sessao.PodeAcessar(Permissao.Portal, Recurso.Cobranca)) return;
+        var resultado = await CasosDeUso.ExecutarAsync((ListarPagamentosManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId)));
+        if (resultado.Sucesso) _pagamentos = resultado.Dados;
+        else _estado.InformarErro(resultado.Erro);
+    }
+
+    private async Task AbrirNovoAsync()
+    {
+        var veiculos = await CasosDeUso.ExecutarAsync((ListarVeiculosManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId)));
+        _veiculos = (veiculos.Dados ?? []).Select(veiculo => new OpcaoSelecao(veiculo.Id.ToString(), $"{veiculo.Apelido} · {veiculo.PlacaFormatada}")).ToList();
+        _formulario = new();
+        _estado.AbrirNovo();
+    }
+
+    private async Task PagarAsync()
+    {
+        _estado.Salvando = true;
+        var comando = new CriarPagamentoComando(Sessao.TenantId, _formulario.VeiculoId, (int)(_formulario.Duracao ?? 0), _formulario.Forma,
+            _formulario.Parcelas, NumeroAtendimento: _formulario.NumeroAtendimento);
+        var resultado = await CasosDeUso.ExecutarAsync((CriarPagamentoManipulador casoDeUso) => casoDeUso.ExecutarAsync(comando));
+        var mensagem = resultado.Dados is { } pago ? $"Pagamento aprovado. Comprovante {pago.Comprovante}." : "";
+        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, mensagem)) await CarregarAsync();
+    }
+
+    private async Task EstornarAsync(PagamentoDto pagamento)
+    {
+        var resultado = await CasosDeUso.ExecutarAsync((EstornarPagamentoManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, pagamento.Id)));
+        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, $"Pagamento {pagamento.Comprovante} estornado.")) await CarregarAsync();
+    }
+
+    private async Task ExcluirAsync(PagamentoDto pagamento)
+    {
+        var resultado = await CasosDeUso.ExecutarAsync((ExcluirPagamentoManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, pagamento.Id)));
+        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, "Pagamento excluído.")) await CarregarAsync();
+    }
+}

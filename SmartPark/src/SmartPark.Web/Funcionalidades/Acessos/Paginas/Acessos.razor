@@ -1,0 +1,105 @@
+@page "/acessos"
+@using SmartPark.Aplicacao.Acessos
+@using SmartPark.Aplicacao.Acessos.Atualizar
+@using SmartPark.Aplicacao.Acessos.Criar
+@using SmartPark.Aplicacao.Acessos.Excluir
+@using SmartPark.Aplicacao.Acessos.Listar
+@inject SessaoUsuario Sessao
+@inject ExecutorCasosDeUso CasosDeUso
+
+<PageTitle>Entradas e saídas · SmartPark</PageTitle>
+
+<PaginaProtegida Permissao="Permissao.Acessos">
+    <CabecalhoPagina Titulo="Entradas e saídas" Descricao="@($"Método de acesso deste cliente: {Rotulos.De(Sessao.Tenant!.MetodoAcesso)}.")">
+        <button type="button" class="botao" @onclick="AbrirNovo">Liberação manual</button>
+    </CabecalhoPagina>
+
+    <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
+
+    <TabelaDados Itens="_acessos" MensagemVazia="Nenhum acesso registrado.">
+        <Cabecalho><th>Horário</th><th>Pessoa</th><th>Identificador</th><th>Direção</th><th>Status</th><th>Origem</th><th></th></Cabecalho>
+        <Linha Context="acesso">
+            <td>@acesso.Horario</td>
+            <td>@acesso.Pessoa</td>
+            <td><strong>@acesso.Identificador</strong></td>
+            <td>@Rotulos.De(acesso.Direcao)</td>
+            <td>
+                <Etiqueta Texto="@acesso.Status.ToString()" Cor="@CoresStatus.De(acesso.Status)" />
+                @if (!string.IsNullOrEmpty(acesso.MotivoNegacao))
+                {
+                    <div class="detalhe">@acesso.MotivoNegacao</div>
+                }
+            </td>
+            <td>@(acesso.Manual ? "Manual" : "Automática")</td>
+            <td><AcoesLinha AoEditar="() => AbrirEdicao(acesso)" AoExcluir="() => ExcluirAsync(acesso)" /></td>
+        </Linha>
+    </TabelaDados>
+
+    <ModalFormulario Aberto="_estado.ModalAberto" Titulo="@(_estado.Editando ? "Editar acesso" : "Liberação manual")"
+                     Erro="@_estado.ErroFormulario" Salvando="_estado.Salvando" AoSalvar="SalvarAsync" AoFechar="_estado.Fechar">
+        <CamposFormulario Campos="Campos" />
+    </ModalFormulario>
+</PaginaProtegida>
+
+@code {
+    private readonly EstadoCrud _estado = new();
+    private IReadOnlyList<AcessoDto>? _acessos;
+    private Formulario _formulario = new();
+
+    private sealed class Formulario
+    {
+        public string Pessoa { get; set; } = "";
+        public string Identificador { get; set; } = "";
+        public DirecaoAcesso Direcao { get; set; }
+        public StatusAcesso Status { get; set; } = StatusAcesso.Liberado;
+        public string Motivo { get; set; } = "";
+
+        public DadosAcesso ParaDados() => new(Pessoa, Identificador, Direcao, Status, Motivo);
+    }
+
+    private IReadOnlyList<CampoFormulario> Campos =>
+    [
+        CampoFormulario.Texto("Pessoa", () => _formulario.Pessoa, valor => _formulario.Pessoa = valor),
+        CampoFormulario.Texto($"Identificador ({Rotulos.De(Sessao.Tenant!.MetodoAcesso)})", () => _formulario.Identificador, valor => _formulario.Identificador = valor),
+        CampoFormulario.Selecao("Direção", () => _formulario.Direcao, valor => _formulario.Direcao = valor, Enum.GetValues<DirecaoAcesso>()),
+        CampoFormulario.Selecao("Status", () => _formulario.Status, valor => _formulario.Status = valor, Enum.GetValues<StatusAcesso>()),
+        CampoFormulario.Texto("Motivo da negação", () => _formulario.Motivo, valor => _formulario.Motivo = valor) with { Visivel = () => _formulario.Status == StatusAcesso.Negado },
+    ];
+
+    protected override Task OnInitializedAsync() => CarregarAsync();
+
+    private async Task CarregarAsync()
+    {
+        if (!Sessao.Conectado) return;
+        var resultado = await CasosDeUso.ExecutarAsync((ListarAcessosManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId)));
+        if (resultado.Sucesso) _acessos = resultado.Dados;
+        else _estado.InformarErro(resultado.Erro);
+    }
+
+    private void AbrirNovo()
+    {
+        _formulario = new();
+        _estado.AbrirNovo();
+    }
+
+    private void AbrirEdicao(AcessoDto acesso)
+    {
+        _formulario = new() { Pessoa = acesso.Pessoa, Identificador = acesso.Identificador, Direcao = acesso.Direcao, Status = acesso.Status, Motivo = acesso.MotivoNegacao };
+        _estado.AbrirEdicao(acesso.Id);
+    }
+
+    private async Task SalvarAsync()
+    {
+        _estado.Salvando = true;
+        var resultado = _estado.IdEditando is int id
+            ? await CasosDeUso.ExecutarAsync((AtualizarAcessoManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, id, _formulario.ParaDados())))
+            : await CasosDeUso.ExecutarAsync((CriarAcessoManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, _formulario.ParaDados())));
+        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, "Acesso salvo.")) await CarregarAsync();
+    }
+
+    private async Task ExcluirAsync(AcessoDto acesso)
+    {
+        var resultado = await CasosDeUso.ExecutarAsync((ExcluirAcessoManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, acesso.Id)));
+        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, "Acesso excluído.")) await CarregarAsync();
+    }
+}

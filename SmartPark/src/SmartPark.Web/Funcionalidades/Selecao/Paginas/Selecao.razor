@@ -1,0 +1,58 @@
+@page "/"
+@using SmartPark.Dominio.LinhaDeProduto
+@inject SessaoUsuario Sessao
+@inject NavigationManager Navegacao
+
+<PageTitle>SmartPark</PageTitle>
+
+<section class="selecao">
+    <header>
+        <h1>SmartPark</h1>
+        <p>Uma linha de produto, quatro variantes. Escolha o cliente e o perfil para entrar.</p>
+    </header>
+
+    <div class="cartoes-tenant">
+        @foreach (var tenant in RegistroTenants.Todos)
+        {
+            <button type="button" class="cartao-tenant @(tenant == _tenant ? "selecionado" : "")"
+                    style="--cor-primaria:@tenant.Tema.Primaria" @onclick="() => Escolher(tenant)">
+                <span class="logo">@tenant.Logo</span>
+                <strong>@tenant.Nome</strong>
+                <small>@tenant.Chamada</small>
+                <span class="recursos">
+                    @foreach (var recurso in Enum.GetValues<Recurso>().Where(tenant.PossuiRecurso))
+                    {
+                        <span class="etiqueta cinza">@Rotulos.De(recurso)</span>
+                    }
+                </span>
+            </button>
+        }
+    </div>
+
+    @if (_tenant is not null)
+    {
+        <div class="entrada">
+            <CampoSelecao Rotulo="Perfil" @bind-Valor="_perfil" Opcoes="OpcaoSelecao.DeEnum(_tenant.PerfisPermitidos)" />
+            <button type="button" class="botao" @onclick="Entrar">Entrar em @_tenant.NomeCurto</button>
+        </div>
+    }
+</section>
+
+@code {
+    private DefinicaoTenant? _tenant;
+    private string _perfil = "";
+
+    private void Escolher(DefinicaoTenant tenant)
+    {
+        _tenant = tenant;
+        _perfil = tenant.PerfisPermitidos[0].ToString();
+    }
+
+    /// <summary>Entra e vai para a primeira tela que o perfil pode usar neste tenant.</summary>
+    private void Entrar()
+    {
+        Sessao.Entrar(_tenant!.Identificador, Enum.Parse<Perfil>(_perfil));
+        var primeira = ItemMenu.Todos.FirstOrDefault(item => Sessao.PodeAcessar(item.Permissao, item.RecursoNecessario));
+        Navegacao.NavigateTo(primeira?.Rota ?? "/");
+    }
+}
