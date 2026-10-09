@@ -28,6 +28,29 @@ public abstract class Vaga
         Status = status;
     }
 
+    public void Atualizar(string codigo, string setor)
+    {
+        Codigo = codigo;
+        Setor = setor;
+    }
+
+    /// <summary>
+    /// Leva a vaga ao status pedido pela tela usando os métodos de intenção abaixo,
+    /// para as mesmas regras valerem (ex.: vaga ocupada não pode ser bloqueada).
+    /// </summary>
+    public void AlterarStatus(StatusVaga novoStatus)
+    {
+        if (novoStatus == Status) return;
+        switch (novoStatus)
+        {
+            case StatusVaga.Livre when Status == StatusVaga.Bloqueada: Desbloquear(); break;
+            case StatusVaga.Livre: Liberar(); break;
+            case StatusVaga.Ocupada: Ocupar(); break;
+            case StatusVaga.Reservada: Reservar(); break;
+            case StatusVaga.Bloqueada: Bloquear(); break;
+        }
+    }
+
     public bool EstaDisponivel() => Status == StatusVaga.Livre;
 
     /// <summary>Um veículo entrou na vaga. Vagas reservadas também podem ser ocupadas.</summary>

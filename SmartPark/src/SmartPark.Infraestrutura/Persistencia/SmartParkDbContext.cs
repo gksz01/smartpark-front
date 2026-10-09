@@ -1,11 +1,12 @@
 using Microsoft.EntityFrameworkCore;
+using SmartPark.Aplicacao.Comum;
 using SmartPark.Dominio.Entidades;
 using SmartPark.Dominio.Enumeradores;
 
 namespace SmartPark.Infraestrutura.Persistencia;
 
 /// <summary>Acesso ao banco SQLite. O mapeamento de cada entidade fica em Configuracoes/.</summary>
-public class SmartParkDbContext(DbContextOptions<SmartParkDbContext> opcoes) : DbContext(opcoes)
+public class SmartParkDbContext(DbContextOptions<SmartParkDbContext> opcoes) : DbContext(opcoes), ISmartParkContexto
 {
     public DbSet<Veiculo> Veiculos => Set<Veiculo>();
     public DbSet<Usuario> Usuarios => Set<Usuario>();

@@ -19,17 +19,22 @@ public class Convenio
 
     public Convenio(int id, string tenantId, string nome, TipoBeneficio tipoBeneficio, int valorBeneficio = 0, bool ativo = true)
     {
-        ValidarBeneficio(tipoBeneficio, valorBeneficio);
         Id = id;
         TenantId = tenantId;
         Nome = nome;
-        TipoBeneficio = tipoBeneficio;
-        ValorBeneficio = valorBeneficio;
         Ativo = ativo;
+        DefinirBeneficio(tipoBeneficio, valorBeneficio);
     }
 
     // Usado pelo EF Core ao ler do banco.
     private Convenio() : this(0, "", "", TipoBeneficio.Isencao) { }
+
+    public void Atualizar(string nome, TipoBeneficio tipoBeneficio, int valorBeneficio, bool ativo)
+    {
+        DefinirBeneficio(tipoBeneficio, valorBeneficio);
+        Nome = nome;
+        Ativo = ativo;
+    }
 
     /// <summary>Valor final do estacionamento depois do benefício.</summary>
     public decimal AplicarBeneficio(IEstrategiaTarifa tarifa, decimal duracaoHoras)
@@ -50,11 +55,15 @@ public class Convenio
         _ => $"{ValorBeneficio} horas gratuitas",
     };
 
-    private static void ValidarBeneficio(TipoBeneficio tipo, int valor)
+    // A isenção não usa valor; percentual e horas grátis precisam de um valor válido.
+    private void DefinirBeneficio(TipoBeneficio tipo, int valor)
     {
         if (tipo == TipoBeneficio.Percentual && valor is < 1 or > 100)
             throw new RegraDeNegocioException("O percentual de desconto deve estar entre 1 e 100.");
         if (tipo == TipoBeneficio.HorasGratis && valor < 1)
             throw new RegraDeNegocioException("Informe a quantidade de horas grátis (número inteiro maior que zero).");
+
+        TipoBeneficio = tipo;
+        ValorBeneficio = tipo == TipoBeneficio.Isencao ? 0 : valor;
     }
 }

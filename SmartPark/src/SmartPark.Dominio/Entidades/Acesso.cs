@@ -37,6 +37,30 @@ public class Acesso
     // Usado pelo EF Core ao ler do banco.
     private Acesso() : this(0, "", "", "", MetodoAcesso.Manual, DirecaoAcesso.Entrada) { }
 
+    public void Atualizar(string pessoa, string identificador, DirecaoAcesso direcao)
+    {
+        Pessoa = pessoa;
+        Identificador = identificador;
+        Direcao = direcao;
+    }
+
+    /// <summary>
+    /// Leva o acesso ao status pedido: Pendente → Liberado (Liberar) ou → Negado (Negar).
+    /// Um acesso decidido não volta para Pendente; no Negado é permitido corrigir o motivo.
+    /// </summary>
+    public void AlterarStatus(StatusAcesso novoStatus, string motivo)
+    {
+        if (novoStatus == Status)
+        {
+            if (novoStatus == StatusAcesso.Negado) CorrigirMotivo(motivo);
+            return;
+        }
+        if (novoStatus == StatusAcesso.Pendente)
+            throw new RegraDeNegocioException($"Este acesso já foi {Status.ToString().ToLowerInvariant()} e não pode voltar para Pendente.");
+        if (novoStatus == StatusAcesso.Liberado) Liberar();
+        else Negar(motivo);
+    }
+
     public void Liberar()
     {
         GarantirPendente();
@@ -49,6 +73,13 @@ public class Acesso
         if (string.IsNullOrWhiteSpace(motivo))
             throw new RegraDeNegocioException("Informe o motivo da negação.");
         Status = StatusAcesso.Negado;
+        MotivoNegacao = motivo.Trim();
+    }
+
+    private void CorrigirMotivo(string motivo)
+    {
+        if (string.IsNullOrWhiteSpace(motivo))
+            throw new RegraDeNegocioException("Informe o motivo da negação.");
         MotivoNegacao = motivo.Trim();
     }
 

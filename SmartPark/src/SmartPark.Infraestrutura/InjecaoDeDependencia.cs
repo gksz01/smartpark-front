@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using SmartPark.Aplicacao.Comum;
 using SmartPark.Infraestrutura.Persistencia;
 using SmartPark.Infraestrutura.Seed;
 
@@ -12,6 +13,7 @@ public static class InjecaoDeDependencia
     {
         var conexao = configuracao.GetConnectionString("SmartPark") ?? "Data Source=smartpark.db;Foreign Keys=True";
         servicos.AddDbContext<SmartParkDbContext>(opcoes => opcoes.UseSqlite(conexao));
+        servicos.AddScoped<ISmartParkContexto>(provedor => provedor.GetRequiredService<SmartParkDbContext>());
         servicos.AddScoped<PopuladorBanco>();
         return servicos;
     }

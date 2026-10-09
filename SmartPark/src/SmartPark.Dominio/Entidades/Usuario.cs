@@ -31,6 +31,15 @@ public class Usuario
     // Usado pelo EF Core ao ler do banco.
     private Usuario() : this(0, "", "", "", Perfil.Visitante, TipoPessoa.Visitante) { }
 
+    public void Atualizar(string nome, string documento, Perfil perfil, TipoPessoa tipo, bool ativo)
+    {
+        Nome = nome;
+        Documento = documento;
+        Perfil = perfil;
+        Tipo = tipo;
+        Ativo = ativo;
+    }
+
     public bool PossuiPermissao(Permissao permissao) => Ativo && PermissoesPorPerfil.Possui(Perfil, permissao);
 
     public bool EhVisitante() => Tipo == TipoPessoa.Visitante || Perfil == Perfil.Visitante;

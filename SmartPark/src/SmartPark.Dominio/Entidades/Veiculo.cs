@@ -22,7 +22,7 @@ public partial class Veiculo
     {
         Id = id;
         TenantId = tenantId;
-        Placa = placa;
+        Placa = NormalizarPlaca(placa);
         Modelo = modelo;
         Cor = cor;
         Apelido = apelido;
@@ -34,8 +34,21 @@ public partial class Veiculo
     // Usado pelo EF Core ao ler do banco.
     private Veiculo() : this(0, "", "", "", "", "") { }
 
+    public void Atualizar(string placa, string modelo, string cor, string apelido, string? tagRfid, string? unidade)
+    {
+        Placa = NormalizarPlaca(placa);
+        Modelo = modelo;
+        Cor = cor;
+        Apelido = apelido;
+        TagRfid = tagRfid;
+        Unidade = unidade;
+    }
+
     /// <summary>Placa em maiúsculas, sem hífen e sem espaços.</summary>
-    public string PlacaNormalizada() => SeparadoresPlaca().Replace(Placa.ToUpperInvariant(), "");
+    public string PlacaNormalizada() => NormalizarPlaca(Placa);
+
+    // A placa é gravada sempre no mesmo formato, para "abc-1234" e "ABC1234" serem a mesma placa.
+    private static string NormalizarPlaca(string placa) => SeparadoresPlaca().Replace(placa.ToUpperInvariant(), "");
 
     public bool ValidarPlaca() => PlacaAntiga().IsMatch(PlacaNormalizada()) || PlacaMercosul().IsMatch(PlacaNormalizada());
 
