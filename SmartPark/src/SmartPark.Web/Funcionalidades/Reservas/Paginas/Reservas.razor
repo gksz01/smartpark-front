@@ -3,127 +3,212 @@
 @using SmartPark.Aplicacao.Reservas.Atualizar
 @using SmartPark.Aplicacao.Reservas.Cancelar
 @using SmartPark.Aplicacao.Reservas.Criar
+@using SmartPark.Aplicacao.Reservas.Estimar
 @using SmartPark.Aplicacao.Reservas.Excluir
 @using SmartPark.Aplicacao.Reservas.Listar
+@using SmartPark.Aplicacao.Vagas
 @using SmartPark.Aplicacao.Vagas.Listar
+@using SmartPark.Aplicacao.Veiculos
 @using SmartPark.Aplicacao.Veiculos.Listar
 @inject SessaoUsuario Sessao
 @inject ExecutorCasosDeUso CasosDeUso
+@inject NavigationManager Navegacao
 
 <PageTitle>Reservas · SmartPark</PageTitle>
 
 <PaginaProtegida Permissao="Permissao.Portal" Recurso="Recurso.Reserva">
-    <CabecalhoPagina Titulo="Reservas" Descricao="@($"A estimativa usa a tarifa ativa. Tolerância de {Dominio.Entidades.Reserva.ToleranciaMinutos} minutos após o horário.")">
-        <button type="button" class="botao" @onclick="AbrirNovoAsync">Nova reserva</button>
-    </CabecalhoPagina>
+    <div class="portal-content page-top narrow-page">
+        <CabecalhoPagina Sobretitulo="Reserva antecipada" Titulo="Garanta sua vaga" Descricao="@($"Reserve no {EstacionamentoDemonstracao.Nome} em poucos passos.")" />
+        <InfoVariacao>
+            Esta rota e sua entrada no menu só existem quando o recurso Reserva está ligado. A estimativa usa a tarifa ativa (Strategy) e a confirmação
+            passa pelo Observer EventosReserva, que reserva a vaga e gera a notificação.
+        </InfoVariacao>
+        <Mensagem Sucesso="@_estado.Sucesso" Erro="@(_estado.ModalAberto ? null : _estado.Erro)" />
 
-    <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
-    <ListaNotificacoes Itens="_notificacoes" />
+        @if (_reservaSalva is { } salva)
+        {
+            <Cartao Classe="success-panel">
+                <span><Icone Nome="TicketCheck" Tamanho="30" /></span>
+                <p class="eyebrow">Reserva confirmada</p>
+                <h2>Sua vaga está garantida.</h2>
+                <p>Chegue até @SmartPark.Dominio.Entidades.Reserva.ToleranciaMinutos minutos após o horário reservado e acesse por @Rotulos.De(Sessao.Tenant!.MetodoAcesso).</p>
+                <div class="receipt-code">Reserva #@salva.Id · Vaga @salva.CodigoVaga · @Formatacao.FormatarMoeda(salva.ValorEstimado)</div>
+                <div class="flex justify-center gap-2">
+                    <button type="button" class="button button-secondary" @onclick="() => _reservaSalva = null">Nova reserva</button>
+                    <button type="button" class="button button-primary" @onclick="@(() => Navegacao.NavigateTo(ItemMenu.RotaInicial(Sessao)))">Voltar ao início</button>
+                </div>
+            </Cartao>
+        }
+        else
+        {
+            <form @onsubmit="ReservarAsync" @onsubmit:preventDefault>
+                <Cartao Classe="form-card">
+                    <div class="form-card-title"><Icone Nome="MapPin" Tamanho="20" /><div><strong>@EstacionamentoDemonstracao.Nome</strong><p>@EstacionamentoDemonstracao.Endereco</p></div></div>
+                    <div class="form-grid">
+                        <label class="form-field"><span>Data</span><input required type="date" value="@_nova.Data.ToString("yyyy-MM-dd")" @onchange="evento => _nova.Data = LerData(evento, _nova.Data)" /></label>
+                        <label class="form-field"><span>Horário</span><input required type="time" value="@_nova.Hora.ToString("HH:mm")" @onchange="evento => _nova.Hora = LerHora(evento, _nova.Hora)" /></label>
+                        <CampoSelecao Rotulo="Período" Valor="@_nova.Duracao.ToString()" Opcoes="Duracoes" ValorChanged="DefinirDuracaoAsync" />
+                        <CampoSelecao Rotulo="Veículo" @bind-Valor="_nova.VeiculoId" Opcoes="OpcoesVeiculos" />
+                        <CampoSelecao Rotulo="Vaga" @bind-Valor="_nova.VagaId" Opcoes="OpcoesVagas" />
+                    </div>
+                    <div class="estimate">
+                        <span>Estimativa da reserva@(_estimativa is null ? "" : $" · {_estimativa.Tarifa}")</span>
+                        <strong>@(_estimativa is null ? "Sem tarifa ativa" : Formatacao.FormatarMoeda(_estimativa.Valor))</strong>
+                    </div>
+                    <button type="submit" class="button button-primary w-full justify-center" disabled="@(OpcoesVeiculos.Count == 0 || OpcoesVagas.Count == 0)">Confirmar reserva <Icone Nome="ArrowRight" Tamanho="17" /></button>
+                </Cartao>
+            </form>
+        }
 
-    <TabelaDados Itens="_reservas" MensagemVazia="Nenhuma reserva registrada.">
-        <Cabecalho><th>Veículo</th><th>Vaga</th><th>Data</th><th>Horário</th><th>Duração</th><th>Estimativa</th><th>Status</th><th></th></Cabecalho>
-        <Linha Context="reserva">
-            <td>@reserva.Veiculo</td>
-            <td><strong>@reserva.CodigoVaga</strong></td>
-            <td>@reserva.Data.ToString("dd/MM/yyyy")</td>
-            <td>@Formatacao.FormatarHora(reserva.Hora)</td>
-            <td>@reserva.DuracaoHoras h</td>
-            <td>@Formatacao.FormatarMoeda(reserva.ValorEstimado)</td>
-            <td><Etiqueta Texto="@Rotulos.De(reserva.Status)" Tom="@CoresStatus.De(reserva.Status)" /></td>
-            <td>
-                @if (reserva.Status is StatusReserva.Pendente or StatusReserva.Confirmada)
-                {
-                    <AcoesLinha Rotulo="registro" AoEditar="() => AbrirEdicao(reserva)">
-                        <button type="button" class="botao pequeno perigo-contorno" @onclick="() => CancelarAsync(reserva)">Cancelar</button>
-                    </AcoesLinha>
-                }
-                else
-                {
-                    <AcoesLinha Rotulo="registro" AoExcluir="() => ExcluirAsync(reserva)" />
-                }
-            </td>
-        </Linha>
-    </TabelaDados>
+        <section class="content-section">
+            <Cartao>
+                <div class="table-toolbar">
+                    <div><h2>Minhas reservas</h2><p>@((_reservas ?? []).Count) reservas · @OpcoesVagas.Count vagas livres</p></div>
+                </div>
+                <TabelaDados Itens="_reservas" Colunas="8" MensagemVazia="Nenhuma reserva registrada.">
+                    <Cabecalho><th>Veículo</th><th>Vaga</th><th>Data</th><th>Horário</th><th>Duração</th><th>Valor</th><th>Status</th><th>Ações</th></Cabecalho>
+                    <Linha Context="reserva">
+                        <td>@reserva.Veiculo</td>
+                        <td><strong>@reserva.CodigoVaga</strong></td>
+                        <td>@reserva.Data.ToString("dd/MM/yyyy")</td>
+                        <td>@Formatacao.FormatarHora(reserva.Hora)</td>
+                        <td>@(reserva.DuracaoHoras)h</td>
+                        <td>@Formatacao.FormatarMoeda(reserva.ValorEstimado)</td>
+                        <td><Etiqueta Texto="@Rotulos.De(reserva.Status)" Tom="@CoresStatus.De(reserva.Status)" /></td>
+                        <td>
+                            @if (EstaAtiva(reserva))
+                            {
+                                <AcoesLinha Rotulo="@($"reserva da vaga {reserva.CodigoVaga}")" DescricaoExclusao="Somente reservas canceladas ou concluídas podem ser excluídas."
+                                            AoEditar="() => AbrirEdicaoAsync(reserva)" AoExcluir="() => ExcluirAsync(reserva)">
+                                    <button type="button" class="button button-secondary" @onclick="() => CancelarAsync(reserva)" aria-label="@($"Cancelar reserva da vaga {reserva.CodigoVaga}")"><Icone Nome="XCircle" Tamanho="16" /> Cancelar</button>
+                                </AcoesLinha>
+                            }
+                            else
+                            {
+                                <AcoesLinha Rotulo="@($"reserva da vaga {reserva.CodigoVaga}")" DescricaoExclusao="Somente reservas canceladas ou concluídas podem ser excluídas."
+                                            AoExcluir="() => ExcluirAsync(reserva)" />
+                            }
+                        </td>
+                    </Linha>
+                </TabelaDados>
+            </Cartao>
+        </section>
+    </div>
 
-    <ModalFormulario Aberto="_estado.ModalAberto" Titulo="@(_estado.Editando ? "Alterar reserva" : "Nova reserva")" TextoSalvar="@(_estado.Editando ? "Salvar" : "Reservar")"
-                     Erro="@_estado.ErroFormulario" Salvando="_estado.Salvando" AoSalvar="SalvarAsync" AoFechar="_estado.Fechar">
-        <CamposFormulario Campos="Campos" />
+    <ModalFormulario Aberto="_estado.ModalAberto" Sobretitulo="@($"Vaga {_codigoVagaEditada}")" Titulo="Alterar reserva" TextoSalvar="Salvar alteração" TextoCancelar="Fechar"
+                     Erro="@_estado.ErroFormulario" Salvando="_estado.Salvando" AoSalvar="SalvarAlteracaoAsync" AoFechar="_estado.Fechar">
+        <ChildContent>
+            <label class="form-field"><span>Data</span><input required type="date" value="@_edicao.Data.ToString("yyyy-MM-dd")" @onchange="evento => _edicao.Data = LerData(evento, _edicao.Data)" /></label>
+            <label class="form-field"><span>Horário</span><input required type="time" value="@_edicao.Hora.ToString("HH:mm")" @onchange="evento => _edicao.Hora = LerHora(evento, _edicao.Hora)" /></label>
+            <CampoSelecao Rotulo="Período" Valor="@_edicao.Duracao.ToString()" Opcoes="Duracoes" ValorChanged="DefinirDuracaoEdicaoAsync" />
+        </ChildContent>
+        <Extra>
+            <div class="estimate mt-5">
+                <span>Nova estimativa</span>
+                <strong>@(_estimativaEdicao is null ? "Sem tarifa ativa" : Formatacao.FormatarMoeda(_estimativaEdicao.Valor))</strong>
+            </div>
+        </Extra>
     </ModalFormulario>
 </PaginaProtegida>
 
 @code {
+    private static readonly IReadOnlyList<OpcaoSelecao> Duracoes = EstacionamentoDemonstracao.Duracoes(1, 2, 4, 8);
+
     private readonly EstadoCrud _estado = new();
     private IReadOnlyList<ReservaDto>? _reservas;
-    private IReadOnlyList<string> _notificacoes = [];
-    private IReadOnlyList<OpcaoSelecao> _veiculos = [];
-    private IReadOnlyList<OpcaoSelecao> _vagasLivres = [];
-    private Formulario _formulario = new();
+    private IReadOnlyList<VeiculoDto> _veiculos = [];
+    private IReadOnlyList<VagaDto> _vagasLivres = [];
+    private EstimativaReservaDto? _estimativa;
+    private EstimativaReservaDto? _estimativaEdicao;
+    private ReservaDto? _reservaSalva;
+    private string _codigoVagaEditada = "";
+    private readonly Periodo _nova = new();
+    private Periodo _edicao = new();
 
-    private sealed class Formulario
+    private sealed class Periodo
     {
-        public int VeiculoId { get; set; }
-        public int VagaId { get; set; }
-        public DateOnly Data { get; set; } = DateOnly.FromDateTime(DateTime.Today.AddDays(1));
-        public TimeOnly Hora { get; set; } = new(9, 0);
-        public decimal? Duracao { get; set; } = 2;
+        public DateOnly Data { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+        public TimeOnly Hora { get; set; } = new(18, 30);
+        public int Duracao { get; set; } = 2;
+        public string VeiculoId { get; set; } = "";
+        public string VagaId { get; set; } = "";
     }
 
-    // Veículo e vaga só são escolhidos na criação; a alteração muda apenas o período
-    private IReadOnlyList<CampoFormulario> Campos =>
-    [
-        CampoFormulario.Selecao("Veículo", () => _formulario.VeiculoId, valor => _formulario.VeiculoId = valor, _veiculos) with { Visivel = () => !_estado.Editando },
-        CampoFormulario.Selecao("Vaga livre", () => _formulario.VagaId, valor => _formulario.VagaId = valor, _vagasLivres) with { Visivel = () => !_estado.Editando },
-        CampoFormulario.Data("Data", () => _formulario.Data, valor => _formulario.Data = valor),
-        CampoFormulario.Hora("Horário", () => _formulario.Hora, valor => _formulario.Hora = valor),
-        CampoFormulario.Numero("Duração (horas)", () => _formulario.Duracao, valor => _formulario.Duracao = valor),
-    ];
+    private IReadOnlyList<OpcaoSelecao> OpcoesVeiculos =>
+        _veiculos.Select(veiculo => new OpcaoSelecao(veiculo.Id.ToString(), $"{veiculo.Apelido} · {veiculo.PlacaFormatada}")).ToList();
+
+    private IReadOnlyList<OpcaoSelecao> OpcoesVagas =>
+        _vagasLivres.Select(vaga => new OpcaoSelecao(vaga.Id.ToString(), $"{vaga.Codigo} · {Rotulos.De(vaga.Tipo)}")).ToList();
+
+    private static bool EstaAtiva(ReservaDto reserva) => reserva.Status is StatusReserva.Pendente or StatusReserva.Confirmada;
 
     protected override Task OnInitializedAsync() => CarregarAsync();
 
+    /// <summary>Reservas, veículos, vagas livres e a estimativa inicial (o cálculo é feito no caso de uso).</summary>
     private async Task CarregarAsync()
     {
         if (!Sessao.PodeAcessar(Permissao.Portal, Recurso.Reserva)) return;
-        var resultado = await CasosDeUso.ExecutarAsync((ListarReservasManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId)));
-        if (resultado.Sucesso) _reservas = resultado.Dados;
-        else _estado.InformarErro(resultado.Erro);
-    }
-
-    private async Task AbrirNovoAsync()
-    {
+        var reservas = await CasosDeUso.ExecutarAsync((ListarReservasManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId)));
         var veiculos = await CasosDeUso.ExecutarAsync((ListarVeiculosManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId)));
         var vagas = await CasosDeUso.ExecutarAsync((ListarVagasManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId)));
-        _veiculos = (veiculos.Dados ?? []).Select(veiculo => new OpcaoSelecao(veiculo.Id.ToString(), $"{veiculo.Apelido} · {veiculo.PlacaFormatada}")).ToList();
-        _vagasLivres = (vagas.Dados ?? []).Where(vaga => vaga.Status == StatusVaga.Livre)
-            .Select(vaga => new OpcaoSelecao(vaga.Id.ToString(), $"{vaga.Codigo} · {Rotulos.De(vaga.Tipo)}")).ToList();
 
-        _formulario = new();
-        _estado.AbrirNovo();
+        if (reservas.Sucesso) _reservas = reservas.Dados;
+        else _estado.InformarErro(reservas.Erro);
+        _veiculos = veiculos.Dados ?? [];
+        _vagasLivres = (vagas.Dados ?? []).Where(vaga => vaga.Status == StatusVaga.Livre).ToList();
+
+        // Mantém a escolha atual se ela ainda existir; senão, o primeiro da lista
+        if (_veiculos.All(veiculo => veiculo.Id.ToString() != _nova.VeiculoId)) _nova.VeiculoId = _veiculos.FirstOrDefault()?.Id.ToString() ?? "";
+        if (_vagasLivres.All(vaga => vaga.Id.ToString() != _nova.VagaId)) _nova.VagaId = _vagasLivres.FirstOrDefault()?.Id.ToString() ?? "";
+        _estimativa = await EstimarAsync(_nova.Duracao);
     }
 
-    private void AbrirEdicao(ReservaDto reserva)
+    private async Task<EstimativaReservaDto?> EstimarAsync(int duracao) =>
+        (await CasosDeUso.ExecutarAsync((EstimarReservaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, duracao)))).Dados;
+
+    private async Task DefinirDuracaoAsync(string valor)
     {
-        _formulario = new() { Data = reserva.Data, Hora = reserva.Hora, Duracao = reserva.DuracaoHoras };
+        _nova.Duracao = int.Parse(valor);
+        _estimativa = await EstimarAsync(_nova.Duracao);
+    }
+
+    private async Task DefinirDuracaoEdicaoAsync(string valor)
+    {
+        _edicao.Duracao = int.Parse(valor);
+        _estimativaEdicao = await EstimarAsync(_edicao.Duracao);
+    }
+
+    private async Task ReservarAsync()
+    {
+        var comando = new CriarReservaComando(Sessao.TenantId, int.Parse(_nova.VeiculoId), int.Parse(_nova.VagaId), _nova.Data, _nova.Hora, _nova.Duracao);
+        var resultado = await CasosDeUso.ExecutarAsync((CriarReservaManipulador casoDeUso) => casoDeUso.ExecutarAsync(comando));
+        _reservaSalva = resultado.Dados?.Reserva;
+        var mensagem = resultado.Dados is { } operacao ? string.Join(" ", operacao.Notificacoes) is { Length: > 0 } texto ? texto : "Reserva confirmada." : "";
+        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, mensagem)) await CarregarAsync();
+    }
+
+    private async Task AbrirEdicaoAsync(ReservaDto reserva)
+    {
+        _edicao = new() { Data = reserva.Data, Hora = reserva.Hora, Duracao = reserva.DuracaoHoras };
+        _codigoVagaEditada = reserva.CodigoVaga;
+        _estimativaEdicao = await EstimarAsync(reserva.DuracaoHoras);
         _estado.AbrirEdicao(reserva.Id);
     }
 
-    private async Task SalvarAsync()
+    private async Task SalvarAlteracaoAsync()
     {
         _estado.Salvando = true;
-        var duracao = (int)(_formulario.Duracao ?? 0);
-        var resultado = _estado.IdEditando is int id
-            ? await CasosDeUso.ExecutarAsync((AtualizarReservaManipulador casoDeUso) =>
-                casoDeUso.ExecutarAsync(new(Sessao.TenantId, id, _formulario.Data, _formulario.Hora, duracao)))
-            : await CasosDeUso.ExecutarAsync((CriarReservaManipulador casoDeUso) =>
-                casoDeUso.ExecutarAsync(new(Sessao.TenantId, _formulario.VeiculoId, _formulario.VagaId, _formulario.Data, _formulario.Hora, duracao)));
-        _notificacoes = resultado.Dados?.Notificacoes ?? [];
-        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, "Reserva salva.")) await CarregarAsync();
+        var comando = new AtualizarReservaComando(Sessao.TenantId, _estado.IdEditando!.Value, _edicao.Data, _edicao.Hora, _edicao.Duracao);
+        var resultado = await CasosDeUso.ExecutarAsync((AtualizarReservaManipulador casoDeUso) => casoDeUso.ExecutarAsync(comando));
+        var mensagem = resultado.Dados is { } operacao ? string.Join(" ", operacao.Notificacoes) is { Length: > 0 } texto ? texto : "Reserva alterada." : "";
+        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, mensagem)) await CarregarAsync();
     }
 
     private async Task CancelarAsync(ReservaDto reserva)
     {
         var resultado = await CasosDeUso.ExecutarAsync((CancelarReservaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, reserva.Id)));
-        _notificacoes = resultado.Dados?.Notificacoes ?? [];
-        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, $"Reserva da vaga {reserva.CodigoVaga} cancelada.")) await CarregarAsync();
+        var mensagem = resultado.Dados is { } operacao ? string.Join(" ", operacao.Notificacoes) is { Length: > 0 } texto ? texto : "Reserva cancelada." : "";
+        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, mensagem)) await CarregarAsync();
     }
 
     private async Task ExcluirAsync(ReservaDto reserva)
@@ -131,4 +216,8 @@
         var resultado = await CasosDeUso.ExecutarAsync((ExcluirReservaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, reserva.Id)));
         if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, "Reserva excluída.")) await CarregarAsync();
     }
+
+    private static DateOnly LerData(ChangeEventArgs evento, DateOnly atual) => DateOnly.TryParse(evento.Value?.ToString(), out var data) ? data : atual;
+
+    private static TimeOnly LerHora(ChangeEventArgs evento, TimeOnly atual) => TimeOnly.TryParse(evento.Value?.ToString(), out var hora) ? hora : atual;
 }

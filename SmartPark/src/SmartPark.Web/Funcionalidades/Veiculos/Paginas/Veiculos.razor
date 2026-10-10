@@ -7,38 +7,51 @@
 @inject SessaoUsuario Sessao
 @inject ExecutorCasosDeUso CasosDeUso
 
-<PageTitle>Veículos · SmartPark</PageTitle>
+<PageTitle>Meus veículos · SmartPark</PageTitle>
 
 <PaginaProtegida Permissao="Permissao.Veiculos">
-    <CabecalhoPagina Titulo="Veículos" Descricao="Veículos cadastrados neste cliente.">
-        <button type="button" class="botao" @onclick="AbrirNovo">Novo veículo</button>
-    </CabecalhoPagina>
+    <div class="portal-content page-top">
+        <CabecalhoPagina Sobretitulo="Garagem digital" Titulo="Meus veículos" Descricao="Gerencie as credenciais vinculadas ao seu perfil.">
+            <button type="button" class="button button-primary" @onclick="AbrirNovo"><Icone Nome="Plus" Tamanho="17" /> Novo veículo</button>
+        </CabecalhoPagina>
+        <InfoVariacao>O CRUD usa um único formulário. Campos adicionais vêm de CamposVeiculo no RegistroTenants: unidade no Condomínio e tag RFID na Empresa.</InfoVariacao>
+        <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
 
-    <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
-
-    <TabelaDados Itens="_veiculos" MensagemVazia="Nenhum veículo cadastrado.">
-        <Cabecalho>
-            <th>Apelido</th><th>Placa</th><th>Modelo</th><th>Cor</th>
-            @foreach (var campo in Sessao.Tenant!.CamposVeiculo)
+        <div class="vehicle-grid">
+            @foreach (var (veiculo, indice) in (_veiculos ?? []).Select((veiculo, indice) => (veiculo, indice)))
             {
-                <th>@campo.Rotulo</th>
+                <Cartao Classe="vehicle-card">
+                    <div class="vehicle-card-art">
+                        <span class="vehicle-number">0@(indice + 1)</span>
+                        <Icone Nome="Car" Tamanho="48" />
+                        <Etiqueta Texto="@(indice == 0 ? "Principal" : "Ativo")" Tom="@(indice == 0 ? "success" : "neutral")" />
+                    </div>
+                    <div class="vehicle-card-body">
+                        <div><p class="eyebrow">@veiculo.Apelido</p><h2>@veiculo.Modelo</h2><p>@veiculo.Cor · <strong>@veiculo.PlacaFormatada</strong></p></div>
+                        @foreach (var campo in Sessao.Tenant!.CamposVeiculo)
+                        {
+                            var valor = campo.Chave == "unidade" ? veiculo.Unidade : veiculo.TagRfid;
+                            <div class="tenant-field-value"><Icone Nome="Tag" Tamanho="15" /><span>@campo.Rotulo</span><strong>@(string.IsNullOrEmpty(valor) ? "Não informado" : valor)</strong></div>
+                        }
+                        <AcoesLinha Classe="vehicle-actions" Rotulo="@($"veículo {veiculo.PlacaFormatada}")" DescricaoExclusao="O veículo deixará de aparecer em reservas e acessos futuros."
+                                    AoEditar="() => AbrirEdicao(veiculo)" AoExcluir="() => ExcluirAsync(veiculo)" />
+                    </div>
+                </Cartao>
             }
-            <th></th>
-        </Cabecalho>
-        <Linha Context="veiculo">
-            <td>@veiculo.Apelido</td>
-            <td><strong>@veiculo.PlacaFormatada</strong></td>
-            <td>@veiculo.Modelo</td>
-            <td>@veiculo.Cor</td>
-            @foreach (var campo in Sessao.Tenant!.CamposVeiculo)
-            {
-                <td>@(campo.Chave == "unidade" ? veiculo.Unidade : veiculo.TagRfid)</td>
-            }
-            <td><AcoesLinha Rotulo="registro" AoEditar="() => AbrirEdicao(veiculo)" AoExcluir="() => ExcluirAsync(veiculo)" /></td>
-        </Linha>
-    </TabelaDados>
+        </div>
+        @if (_veiculos is { Count: 0 })
+        {
+            <Cartao Classe="empty-state">
+                <Icone Nome="Car" Tamanho="28" />
+                <h2>Nenhum veículo cadastrado</h2>
+                <p>Adicione um veículo para reservar e acessar estacionamentos.</p>
+                <button type="button" class="button button-primary" @onclick="AbrirNovo"><Icone Nome="Plus" Tamanho="17" /> Adicionar veículo</button>
+            </Cartao>
+        }
+    </div>
 
-    <ModalFormulario Aberto="_estado.ModalAberto" Titulo="@(_estado.Editando ? "Editar veículo" : "Novo veículo")"
+    <ModalFormulario Aberto="_estado.ModalAberto" Sobretitulo="Cadastro reutilizável" Titulo="@(_estado.Editando ? "Editar veículo" : "Novo veículo")"
+                     TextoSalvar="Salvar veículo" Classe="vehicle-modal" ClasseCorpo="form-grid mt-6"
                      Erro="@_estado.ErroFormulario" Salvando="_estado.Salvando" AoSalvar="SalvarAsync" AoFechar="_estado.Fechar">
         <CamposFormulario Campos="Campos" />
     </ModalFormulario>
@@ -61,13 +74,13 @@
         public DadosVeiculo ParaDados() => new(Apelido, Placa, Modelo, Cor, Unidade, TagRfid);
     }
 
-    // Os campos fixos e, depois, os campos extras que a LPS define para este tenant
+    // Os 4 campos do núcleo e, depois, os campos extras que a LPS define para este tenant
     private IReadOnlyList<CampoFormulario> Campos =>
     [
         CampoFormulario.Texto("Apelido", () => _formulario.Apelido, valor => _formulario.Apelido = valor, "Ex.: Meu carro"),
-        CampoFormulario.Texto("Placa", () => _formulario.Placa, valor => _formulario.Placa = valor, "Ex.: ABC1D23"),
-        CampoFormulario.Texto("Modelo", () => _formulario.Modelo, valor => _formulario.Modelo = valor),
-        CampoFormulario.Texto("Cor", () => _formulario.Cor, valor => _formulario.Cor = valor),
+        CampoFormulario.Texto("Placa", () => _formulario.Placa, valor => _formulario.Placa = valor, "ABC1D23"),
+        CampoFormulario.Texto("Modelo", () => _formulario.Modelo, valor => _formulario.Modelo = valor, "Ex.: Honda City"),
+        CampoFormulario.Texto("Cor", () => _formulario.Cor, valor => _formulario.Cor = valor, "Ex.: Cinza"),
         .. Sessao.Tenant!.CamposVeiculo.Select(campo => campo.Chave == "unidade"
             ? CampoFormulario.Texto(campo.Rotulo, () => _formulario.Unidade, valor => _formulario.Unidade = valor, campo.Exemplo)
             : CampoFormulario.Texto(campo.Rotulo, () => _formulario.TagRfid, valor => _formulario.TagRfid = valor, campo.Exemplo)),
@@ -77,7 +90,7 @@
 
     private async Task CarregarAsync()
     {
-        if (!Sessao.Conectado) return;
+        if (!Sessao.PodeAcessar(Permissao.Veiculos)) return;
         var resultado = await CasosDeUso.ExecutarAsync((ListarVeiculosManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId)));
         if (resultado.Sucesso) _veiculos = resultado.Dados;
         else _estado.InformarErro(resultado.Erro);
@@ -102,15 +115,17 @@
     private async Task SalvarAsync()
     {
         _estado.Salvando = true;
+        var editando = _estado.Editando;
         var resultado = _estado.IdEditando is int id
             ? await CasosDeUso.ExecutarAsync((AtualizarVeiculoManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, id, _formulario.ParaDados())))
             : await CasosDeUso.ExecutarAsync((CriarVeiculoManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, _formulario.ParaDados())));
-        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, "Veículo salvo.")) await CarregarAsync();
+        var mensagem = editando ? "Veículo atualizado com sucesso." : "Veículo cadastrado com sucesso.";
+        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, mensagem)) await CarregarAsync();
     }
 
     private async Task ExcluirAsync(VeiculoDto veiculo)
     {
         var resultado = await CasosDeUso.ExecutarAsync((ExcluirVeiculoManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, veiculo.Id)));
-        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, $"Veículo {veiculo.PlacaFormatada} excluído.")) await CarregarAsync();
+        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, "Veículo excluído.")) await CarregarAsync();
     }
 }

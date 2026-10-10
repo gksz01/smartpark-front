@@ -10,32 +10,61 @@
 <PageTitle>Entradas e saídas · SmartPark</PageTitle>
 
 <PaginaProtegida Permissao="Permissao.Acessos">
-    <CabecalhoPagina Titulo="Entradas e saídas" Descricao="@($"Método de acesso deste cliente: {Rotulos.De(Sessao.Tenant!.MetodoAcesso)}.")">
-        <button type="button" class="botao" @onclick="AbrirNovo">Liberação manual</button>
-    </CabecalhoPagina>
+    <div class="admin-page">
+        <CabecalhoPagina Sobretitulo="Portaria inteligente" Titulo="Entradas e saídas" Descricao="@($"Identificação principal: {Rotulos.De(Metodo)}.")">
+            @if (PodeAlterar)
+            {
+                <button type="button" class="button button-primary" @onclick="AbrirNovo"><Icone Nome="DoorOpen" Tamanho="17" /> Liberação manual</button>
+            }
+        </CabecalhoPagina>
+        <InfoVariacao>
+            A coluna de identificação acompanha o MetodoAcesso do tenant: placa no LPR, código no QR Code e tag no RFID.
+            A ação manual permanece reutilizável para perfis autorizados.
+        </InfoVariacao>
+        <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
 
-    <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
+        <div class="access-kpis">
+            <Cartao><span><Icone Nome="LogIn" /></span><div><strong>@Contar(DirecaoAcesso.Entrada)</strong><small>Entradas registradas</small></div></Cartao>
+            <Cartao><span><Icone Nome="LogOut" /></span><div><strong>@Contar(DirecaoAcesso.Saida)</strong><small>Saídas registradas</small></div></Cartao>
+            <Cartao><span><Icone Nome="ShieldCheck" /></span><div><strong>@PercentualAutomatico</strong><small>Liberações automáticas</small></div></Cartao>
+        </div>
 
-    <TabelaDados Itens="_acessos" MensagemVazia="Nenhum acesso registrado.">
-        <Cabecalho><th>Horário</th><th>Pessoa</th><th>Identificador</th><th>Direção</th><th>Status</th><th>Origem</th><th></th></Cabecalho>
-        <Linha Context="acesso">
-            <td>@acesso.Horario</td>
-            <td>@acesso.Pessoa</td>
-            <td><strong>@acesso.Identificador</strong></td>
-            <td>@Rotulos.De(acesso.Direcao)</td>
-            <td>
-                <Etiqueta Texto="@acesso.Status.ToString()" Tom="@CoresStatus.De(acesso.Status)" />
-                @if (!string.IsNullOrEmpty(acesso.MotivoNegacao))
-                {
-                    <div class="detalhe">@acesso.MotivoNegacao</div>
-                }
-            </td>
-            <td>@(acesso.Manual ? "Manual" : "Automática")</td>
-            <td><AcoesLinha Rotulo="registro" AoEditar="() => AbrirEdicao(acesso)" AoExcluir="() => ExcluirAsync(acesso)" /></td>
-        </Linha>
-    </TabelaDados>
+        <Cartao>
+            <div class="table-toolbar">
+                <div><h2>Fluxo recente</h2><p>@((_acessos ?? []).Count) acessos exibidos</p></div>
+                <Etiqueta Texto="@Identificador.Rotulo" Tom="info" />
+            </div>
+            <TabelaDados Itens="_acessos" Colunas="6" MensagemVazia="Nenhum acesso registrado.">
+                <Cabecalho><th>Identificação</th><th>Usuário</th><th>Horário</th><th>Movimento</th><th>Status</th><th>Ações</th></Cabecalho>
+                <Linha Context="acesso">
+                    <td><div><strong>@acesso.Identificador</strong>@if (acesso.Manual) { <small class="table-subtitle">Liberação manual</small> }</div></td>
+                    <td>@acesso.Pessoa</td>
+                    <td><span class="inline-flex items-center gap-1.5"><Icone Nome="Clock3" Tamanho="14" />@acesso.Horario</span></td>
+                    <td><span class="inline-flex items-center gap-1.5"><Icone Nome="@(acesso.Direcao == DirecaoAcesso.Entrada ? "LogIn" : "LogOut")" Tamanho="15" />@Rotulos.De(acesso.Direcao)</span></td>
+                    <td>
+                        <div>
+                            <Etiqueta Texto="@acesso.Status.ToString()" Tom="@CoresStatus.De(acesso.Status)" />
+                            @if (!string.IsNullOrEmpty(acesso.MotivoNegacao))
+                            {
+                                <small class="table-subtitle">@acesso.MotivoNegacao</small>
+                            }
+                        </div>
+                    </td>
+                    <td>
+                        @if (PodeAlterar)
+                        {
+                            <AcoesLinha Rotulo="@($"acesso de {acesso.Pessoa}")" DescricaoExclusao="O registro será removido do histórico de entradas e saídas."
+                                        AoEditar="() => AbrirEdicao(acesso)" AoExcluir="() => ExcluirAsync(acesso)" />
+                        }
+                    </td>
+                </Linha>
+            </TabelaDados>
+        </Cartao>
+    </div>
 
-    <ModalFormulario Aberto="_estado.ModalAberto" Titulo="@(_estado.Editando ? "Editar acesso" : "Liberação manual")"
+    <ModalFormulario Aberto="_estado.ModalAberto" Sobretitulo="Ação de operador" Titulo="@(_estado.Editando ? "Editar acesso" : "Liberação manual")"
+                     Descricao="@(_estado.Editando ? "Corrija os dados ou decida um acesso pendente." : "Registre uma exceção auditável para entrada ou saída.")"
+                     TextoSalvar="@(_estado.Editando ? "Salvar acesso" : "Confirmar liberação")" TextoCancelar="@null"
                      Erro="@_estado.ErroFormulario" Salvando="_estado.Salvando" AoSalvar="SalvarAsync" AoFechar="_estado.Fechar">
         <CamposFormulario Campos="Campos" />
     </ModalFormulario>
@@ -44,6 +73,7 @@
 @code {
     private readonly EstadoCrud _estado = new();
     private IReadOnlyList<AcessoDto>? _acessos;
+    private StatusAcesso? _statusOriginal;
     private Formulario _formulario = new();
 
     private sealed class Formulario
@@ -57,20 +87,47 @@
         public DadosAcesso ParaDados() => new(Pessoa, Identificador, Direcao, Status, Motivo);
     }
 
+    private MetodoAcesso Metodo => Sessao.Tenant!.MetodoAcesso;
+    private (string Rotulo, string Exemplo) Identificador => Rotulos.IdentificadorDe(Metodo);
+
+    /// <summary>Liberação manual, edição e exclusão só para operador e administrador (o manobrista só consulta).</summary>
+    private bool PodeAlterar => Sessao.Perfil is Perfil.Operador or Perfil.Administrador;
+
+    /// <summary>Um acesso já liberado ou negado não volta para Pendente (regra da classe Acesso).</summary>
+    private bool StatusTravado => _statusOriginal is not null and not StatusAcesso.Pendente;
+
+    private int Contar(DirecaoAcesso direcao) => (_acessos ?? []).Count(acesso => acesso.Direcao == direcao);
+
+    private string PercentualAutomatico
+    {
+        get
+        {
+            var liberados = (_acessos ?? []).Where(acesso => acesso.Status == StatusAcesso.Liberado).ToList();
+            return liberados.Count == 0 ? "—" : $"{liberados.Count(acesso => !acesso.Manual) * 100 / liberados.Count}%";
+        }
+    }
+
+    // O rótulo do identificador vem do método de acesso; o status só aparece na edição
     private IReadOnlyList<CampoFormulario> Campos =>
     [
-        CampoFormulario.Texto("Pessoa", () => _formulario.Pessoa, valor => _formulario.Pessoa = valor),
-        CampoFormulario.Texto($"Identificador ({Rotulos.De(Sessao.Tenant!.MetodoAcesso)})", () => _formulario.Identificador, valor => _formulario.Identificador = valor),
-        CampoFormulario.Selecao("Direção", () => _formulario.Direcao, valor => _formulario.Direcao = valor, Enum.GetValues<DirecaoAcesso>()),
-        CampoFormulario.Selecao("Status", () => _formulario.Status, valor => _formulario.Status = valor, Enum.GetValues<StatusAcesso>()),
-        CampoFormulario.Texto("Motivo da negação", () => _formulario.Motivo, valor => _formulario.Motivo = valor) with { Visivel = () => _formulario.Status == StatusAcesso.Negado },
+        CampoFormulario.Texto("Nome do usuário", () => _formulario.Pessoa, valor => _formulario.Pessoa = valor, "Nome completo"),
+        CampoFormulario.Texto(Identificador.Rotulo, () => _formulario.Identificador, valor => _formulario.Identificador = valor, Identificador.Exemplo),
+        CampoFormulario.Selecao("Movimento", () => _formulario.Direcao, valor => _formulario.Direcao = valor, Enum.GetValues<DirecaoAcesso>()),
+        CampoFormulario.Selecao("Status", () => _formulario.Status, valor => _formulario.Status = valor, Enum.GetValues<StatusAcesso>()) with
+        {
+            Visivel = () => _estado.Editando,
+            Desabilitado = StatusTravado,
+            Dica = StatusTravado ? $"Acesso já {_statusOriginal.ToString()!.ToLowerInvariant()}: o status não pode mais mudar." : null,
+        },
+        CampoFormulario.Texto("Motivo da negação", () => _formulario.Motivo, valor => _formulario.Motivo = valor, "Ex.: Credencial expirada")
+            with { Visivel = () => _formulario.Status == StatusAcesso.Negado },
     ];
 
     protected override Task OnInitializedAsync() => CarregarAsync();
 
     private async Task CarregarAsync()
     {
-        if (!Sessao.Conectado) return;
+        if (!Sessao.PodeAcessar(Permissao.Acessos)) return;
         var resultado = await CasosDeUso.ExecutarAsync((ListarAcessosManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId)));
         if (resultado.Sucesso) _acessos = resultado.Dados;
         else _estado.InformarErro(resultado.Erro);
@@ -79,27 +136,33 @@
     private void AbrirNovo()
     {
         _formulario = new();
+        _statusOriginal = null;
         _estado.AbrirNovo();
     }
 
     private void AbrirEdicao(AcessoDto acesso)
     {
         _formulario = new() { Pessoa = acesso.Pessoa, Identificador = acesso.Identificador, Direcao = acesso.Direcao, Status = acesso.Status, Motivo = acesso.MotivoNegacao };
+        _statusOriginal = acesso.Status;
         _estado.AbrirEdicao(acesso.Id);
     }
 
     private async Task SalvarAsync()
     {
         _estado.Salvando = true;
+        var editando = _estado.Editando;
         var resultado = _estado.IdEditando is int id
             ? await CasosDeUso.ExecutarAsync((AtualizarAcessoManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, id, _formulario.ParaDados())))
             : await CasosDeUso.ExecutarAsync((CriarAcessoManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, _formulario.ParaDados())));
-        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, "Acesso salvo.")) await CarregarAsync();
+        var mensagem = resultado.Dados is { } acesso
+            ? editando ? $"Acesso de {acesso.Pessoa} atualizado." : $"{Rotulos.De(acesso.Direcao)} de {acesso.Pessoa} liberada manualmente."
+            : "";
+        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, mensagem)) await CarregarAsync();
     }
 
     private async Task ExcluirAsync(AcessoDto acesso)
     {
         var resultado = await CasosDeUso.ExecutarAsync((ExcluirAcessoManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, acesso.Id)));
-        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, "Acesso excluído.")) await CarregarAsync();
+        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, "Registro de acesso excluído.")) await CarregarAsync();
     }
 }

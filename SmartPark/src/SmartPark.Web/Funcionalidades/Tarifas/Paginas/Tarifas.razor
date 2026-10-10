@@ -10,24 +10,44 @@
 <PageTitle>Tarifas · SmartPark</PageTitle>
 
 <PaginaProtegida Permissao="Permissao.Configuracao" Recurso="Recurso.Cobranca">
-    <CabecalhoPagina Titulo="Tarifas" Descricao="O tipo de cálculo escolhe a Strategy usada pela tarifa. Só uma tarifa fica ativa por vez.">
-        <button type="button" class="botao" @onclick="AbrirNovo">Nova tarifa</button>
-    </CabecalhoPagina>
+    <div class="admin-page">
+        <CabecalhoPagina Sobretitulo="Cobrança" Titulo="Tarifas"
+                         Descricao="@($"Regras de preço do estacionamento de {Sessao.Tenant!.Nome}. A tarifa ativa será usada em reservas e pagamentos.")">
+            <button type="button" class="button button-primary" @onclick="AbrirNovo"><Icone Nome="Plus" Tamanho="17" /> Nova tarifa</button>
+        </CabecalhoPagina>
+        <InfoVariacao>
+            Esta tela só existe quando o recurso Cobrança está ligado (Shopping e Hospital). Cada tipo de cálculo é uma Strategy:
+            a coluna "Simulação 3h" vem de tarifa.Calcular(3), e a classe Tarifa delega para TarifaPorHora, TarifaFixaDiaria ou TarifaIsenta.
+        </InfoVariacao>
+        <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
 
-    <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
+        <Cartao>
+            <div class="table-toolbar">
+                <div><h2>Tarifas cadastradas</h2><p>@((_tarifas ?? []).Count) tarifas · no máximo uma ativa</p></div>
+            </div>
+            <TabelaDados Itens="_tarifas" Colunas="6" MensagemVazia="Nenhuma tarifa cadastrada.">
+                <Cabecalho><th>Nome</th><th>Tipo</th><th>Configuração</th><th>Simulação 3h</th><th>Situação</th><th>Ações</th></Cabecalho>
+                <Linha Context="tarifa">
+                    <td><strong>@tarifa.Nome</strong></td>
+                    <td>@Rotulos.De(tarifa.TipoEstrategia)</td>
+                    <td>@tarifa.Descricao</td>
+                    <td><strong>@Formatacao.FormatarMoeda(tarifa.Simulacao3h)</strong></td>
+                    <td><Etiqueta Texto="@(tarifa.Ativa ? "Ativa" : "Inativa")" Tom="@CoresStatus.DeAtivo(tarifa.Ativa)" /></td>
+                    <td>
+                        <AcoesLinha Rotulo="@tarifa.Nome" DescricaoExclusao="Somente tarifas inativas podem ser excluídas."
+                                    AoEditar="() => AbrirEdicao(tarifa)" AoExcluir="() => ExcluirAsync(tarifa)">
+                            @if (!tarifa.Ativa)
+                            {
+                                <button type="button" class="button button-secondary" @onclick="() => AtivarAsync(tarifa)" aria-label="@($"Ativar {tarifa.Nome}")"><Icone Nome="CheckCircle2" Tamanho="16" /> Ativar</button>
+                            }
+                        </AcoesLinha>
+                    </td>
+                </Linha>
+            </TabelaDados>
+        </Cartao>
+    </div>
 
-    <TabelaDados Itens="_tarifas" MensagemVazia="Nenhuma tarifa cadastrada.">
-        <Cabecalho><th>Nome</th><th>Tipo de cálculo</th><th>Valores</th><th>Situação</th><th></th></Cabecalho>
-        <Linha Context="tarifa">
-            <td>@tarifa.Nome</td>
-            <td>@Rotulos.De(tarifa.TipoEstrategia)</td>
-            <td>@tarifa.Descricao</td>
-            <td><Etiqueta Texto="@(tarifa.Ativa ? "Ativa" : "Inativa")" Tom="@CoresStatus.DeAtivo(tarifa.Ativa)" /></td>
-            <td><AcoesLinha Rotulo="registro" AoEditar="() => AbrirEdicao(tarifa)" AoExcluir="() => ExcluirAsync(tarifa)" /></td>
-        </Linha>
-    </TabelaDados>
-
-    <ModalFormulario Aberto="_estado.ModalAberto" Titulo="@(_estado.Editando ? "Editar tarifa" : "Nova tarifa")"
+    <ModalFormulario Aberto="_estado.ModalAberto" Sobretitulo="Cadastro de tarifas" Titulo="@(_estado.Editando ? "Editar tarifa" : "Nova tarifa")" TextoSalvar="Salvar tarifa"
                      Erro="@_estado.ErroFormulario" Salvando="_estado.Salvando" AoSalvar="SalvarAsync" AoFechar="_estado.Fechar">
         <CamposFormulario Campos="Campos" />
     </ModalFormulario>
@@ -46,20 +66,21 @@
         public decimal? Teto { get; set; }
         public bool Ativa { get; set; }
 
-        // Isenta não usa valor e só a tarifa por hora tem teto diário
+        // Só a tarifa por hora usa teto; a isenta não usa valor
         public DadosTarifa ParaDados() => new(Nome, Tipo, Tipo == TipoEstrategiaTarifa.Isenta ? 0 : Valor ?? 0,
             Tipo == TipoEstrategiaTarifa.PorHora ? Teto : null, Ativa);
     }
 
+    // Só os campos que cada tipo de cálculo usa (o cálculo em si fica na Strategy)
     private IReadOnlyList<CampoFormulario> Campos =>
     [
-        CampoFormulario.Texto("Nome", () => _formulario.Nome, valor => _formulario.Nome = valor),
+        CampoFormulario.Texto("Nome", () => _formulario.Nome, valor => _formulario.Nome = valor, "Ex.: Tarifa padrão"),
         CampoFormulario.Selecao("Tipo de cálculo", () => _formulario.Tipo, valor => _formulario.Tipo = valor, Enum.GetValues<TipoEstrategiaTarifa>()),
-        CampoFormulario.Numero(_formulario.Tipo == TipoEstrategiaTarifa.Diaria ? "Valor da diária (R$)" : "Valor da hora (R$)",
-            () => _formulario.Valor, valor => _formulario.Valor = valor) with { Visivel = () => _formulario.Tipo != TipoEstrategiaTarifa.Isenta },
-        CampoFormulario.Numero("Teto diário (R$, opcional)", () => _formulario.Teto, valor => _formulario.Teto = valor)
-            with { Visivel = () => _formulario.Tipo == TipoEstrategiaTarifa.PorHora },
-        CampoFormulario.Booleano("Tarifa ativa", () => _formulario.Ativa, valor => _formulario.Ativa = valor),
+        CampoFormulario.Numero(_formulario.Tipo == TipoEstrategiaTarifa.Diaria ? "Valor da diária (R$)" : "Valor da hora (R$)", () => _formulario.Valor, valor => _formulario.Valor = valor)
+            with { Visivel = () => _formulario.Tipo != TipoEstrategiaTarifa.Isenta },
+        CampoFormulario.Numero("Teto diário (R$)", () => _formulario.Teto, valor => _formulario.Teto = valor)
+            with { Dica = "Opcional", Opcional = true, Visivel = () => _formulario.Tipo == TipoEstrategiaTarifa.PorHora },
+        CampoFormulario.Booleano("Situação", () => _formulario.Ativa, valor => _formulario.Ativa = valor, "Ativa (desativa a atual)", "Inativa"),
     ];
 
     protected override Task OnInitializedAsync() => CarregarAsync();
@@ -87,15 +108,25 @@
     private async Task SalvarAsync()
     {
         _estado.Salvando = true;
+        var editando = _estado.Editando;
         var resultado = _estado.IdEditando is int id
             ? await CasosDeUso.ExecutarAsync((AtualizarTarifaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, id, _formulario.ParaDados())))
             : await CasosDeUso.ExecutarAsync((CriarTarifaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, _formulario.ParaDados())));
-        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, "Tarifa salva.")) await CarregarAsync();
+        var mensagem = resultado.Dados is { } tarifa ? $"Tarifa {tarifa.Nome} {(editando ? "atualizada" : "cadastrada")} com sucesso." : "";
+        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, mensagem)) await CarregarAsync();
+    }
+
+    /// <summary>Atalho para ativar: salva a mesma tarifa com Ativa = true (a anterior é desativada no caso de uso).</summary>
+    private async Task AtivarAsync(TarifaDto tarifa)
+    {
+        var dados = new DadosTarifa(tarifa.Nome, tarifa.TipoEstrategia, tarifa.Valor, tarifa.ValorMaximoDiario, Ativa: true);
+        var resultado = await CasosDeUso.ExecutarAsync((AtualizarTarifaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, tarifa.Id, dados)));
+        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, $"Tarifa {tarifa.Nome} ativada. A anterior foi desativada.")) await CarregarAsync();
     }
 
     private async Task ExcluirAsync(TarifaDto tarifa)
     {
         var resultado = await CasosDeUso.ExecutarAsync((ExcluirTarifaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, tarifa.Id)));
-        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, $"Tarifa {tarifa.Nome} excluída.")) await CarregarAsync();
+        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, "Tarifa excluída.")) await CarregarAsync();
     }
 }

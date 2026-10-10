@@ -74,3 +74,40 @@ public class PagamentosTestes : CenarioAplicacao
         Assert.Equal("Saúde Plena", comConvenio.Convenio);
     }
 }
+
+public class SimulacoesTestes : CenarioAplicacao
+{
+    [Fact]
+    public async Task SimularPagamentoAsync_DeveCalcularComConvenio_SemConsumirBeneficio()
+    {
+        var consulta = new SmartPark.Aplicacao.Pagamentos.Simular.SimulacaoPagamentoConsulta("hospital", 3, FormaPagamento.Pix, NumeroAtendimento: "ATD-71305");
+
+        var simulacao = Sucesso(await new SmartPark.Aplicacao.Pagamentos.Simular.SimularPagamentoManipulador(Contexto).ExecutarAsync(consulta));
+
+        Assert.Equal(30, simulacao.ValorTarifa);
+        Assert.Equal(15, simulacao.Valor); // VidaCare: 50% de desconto
+        Assert.Equal("Desconto de 50%", simulacao.Beneficio);
+        await using var leitura = CriarContexto();
+        Assert.False(leitura.Atendimentos.Single(atendimento => atendimento.Numero == "ATD-71305").BeneficioAplicado);
+    }
+
+    [Fact]
+    public async Task SimularPagamentoAsync_DeveIncluirTaxaDoParcelamento()
+    {
+        var consulta = new SmartPark.Aplicacao.Pagamentos.Simular.SimulacaoPagamentoConsulta("shopping", 4, FormaPagamento.Credito, Parcelas: 3);
+
+        var simulacao = Sucesso(await new SmartPark.Aplicacao.Pagamentos.Simular.SimularPagamentoManipulador(Contexto).ExecutarAsync(consulta));
+
+        Assert.Equal(48, simulacao.Valor);
+        Assert.Equal(50.4m, simulacao.ValorCobrado);
+    }
+
+    [Fact]
+    public async Task EstimarReservaAsync_DeveUsarATarifaAtiva()
+    {
+        var estimativa = Sucesso(await new SmartPark.Aplicacao.Reservas.Estimar.EstimarReservaManipulador(Contexto).ExecutarAsync(new("shopping", 8)));
+
+        Assert.Equal("Tarifa Aurora", estimativa.Tarifa);
+        Assert.Equal(60, estimativa.Valor); // 8h × R$ 12 = 96, limitado ao teto de R$ 60
+    }
+}

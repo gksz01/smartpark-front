@@ -1,43 +1,89 @@
+@* Etapas e validação de um atendimento (só consulta; o benefício é consumido no pagamento). *@
 @using SmartPark.Aplicacao.Convenios.ValidarAtendimento
 @inject SessaoUsuario Sessao
 @inject ExecutorCasosDeUso CasosDeUso
 
-<section class="painel">
-    <h2>Validar atendimento</h2>
-    <form class="linha-formulario" @onsubmit="ValidarAsync" @onsubmit:preventDefault>
-        <label class="campo">
-            <span>Número do atendimento</span>
-            <input @bind="_numero" placeholder="Ex.: ATD-48291" />
-        </label>
-        <button type="submit" class="botao">Validar</button>
-    </form>
+<div class="medical-steps">
+    @for (var indice = 0; indice < Etapas.Length; indice++)
+    {
+        var concluida = EtapaConcluida(indice);
+        <div class="@(concluida ? "done" : indice == 0 && _encontrado is null ? "active" : "")">
+            <span>@if (concluida) { <Icone Nome="Check" Tamanho="14" /> } else { @(indice + 1) }</span>
+            <small>@Etapas[indice]</small>
+        </div>
+    }
+</div>
 
-    @if (_erro is not null)
-    {
+<div class="medical-grid">
+    <Cartao Classe="medical-search">
+        <div class="medical-icon"><Icone Nome="HeartHandshake" Tamanho="28" /></div>
+        <p class="eyebrow">Etapa 1</p>
+        <h2>Localizar atendimento</h2>
+        <p>Informe o número recebido na recepção ou o código do convênio.</p>
+        <form @onsubmit="LocalizarAsync" @onsubmit:preventDefault>
+            <label class="form-field">
+                <span>Número do atendimento</span>
+                <input required @bind="_numero" placeholder="Ex.: ATD-48291" />
+            </label>
+            <button type="submit" class="button button-primary w-full justify-center">Localizar atendimento <Icone Nome="ArrowRight" Tamanho="17" /></button>
+        </form>
+        <small class="demo-hint">Para demonstrar, use <button type="button" @onclick="@(() => _numero = "ATD-48291")">ATD-48291</button>.</small>
         <Mensagem Erro="@_erro" />
-    }
-    else if (_resultado is { } resultado)
-    {
-        <p>
-            <strong>@resultado.Paciente</strong> · @resultado.Convenio · @resultado.Beneficio
-            <Etiqueta Texto="@(resultado.Elegivel ? "Elegível" : "Não elegível")" Tom="@(resultado.Elegivel ? "success" : "danger")" />
-        </p>
-        @if (!resultado.Elegivel)
+    </Cartao>
+
+    <Cartao Classe="@($"eligibility-card {(_encontrado is null ? "" : "visible")}")">
+        @if (_encontrado is { } encontrado)
         {
-            <p class="detalhe">@resultado.Motivo</p>
+            <div class="eligibility-header">
+                <span><Icone Nome="@(encontrado.Elegivel ? "BadgeCheck" : "AlertTriangle")" Tamanho="22" /></span>
+                <div><p class="eyebrow">Atendimento localizado</p><h2>@(encontrado.Elegivel ? "Elegível para benefício" : "Não elegível")</h2></div>
+            </div>
+            <div class="patient-card">
+                <span><Icone Nome="UserRound" Tamanho="22" /></span>
+                <div><small>Paciente</small><strong>@encontrado.Paciente</strong><p>@encontrado.Numero</p></div>
+            </div>
+            <div class="eligibility-lines">
+                <span>Convênio <strong>@encontrado.Convenio</strong></span>
+                <span>Elegibilidade <Etiqueta Texto="@(encontrado.Elegivel ? "Ativa" : "Recusada")" Tom="@(encontrado.Elegivel ? "success" : "danger")" /></span>
+                <span>Benefício <strong>@encontrado.Beneficio</strong></span>
+            </div>
+            @if (encontrado.Elegivel)
+            {
+                <div class="alert alert-success"><Icone Nome="Check" Tamanho="18" /><div><strong>Elegibilidade validada.</strong><br />O benefício será aplicado no pagamento do estacionamento.</div></div>
+            }
+            else
+            {
+                <div class="alert alert-danger"><Icone Nome="AlertTriangle" Tamanho="18" /><div><strong>Benefício indisponível.</strong><br />@encontrado.Motivo</div></div>
+            }
+            <button type="button" class="button button-secondary w-full justify-center" @onclick="NovaValidacao">Nova validação</button>
         }
-    }
-</section>
+        else
+        {
+            <div class="medical-placeholder">
+                <span><Icone Nome="Stethoscope" Tamanho="32" /></span>
+                <h2>Aguardando consulta</h2>
+                <p>Os dados do paciente, elegibilidade e benefício aparecerão aqui.</p>
+            </div>
+        }
+    </Cartao>
+</div>
 
 @code {
+    private static readonly string[] Etapas = ["Atendimento", "Localização", "Elegibilidade", "Benefício", "Pagamento"];
+
     private string _numero = "";
-    private ElegibilidadeDto? _resultado;
+    private ElegibilidadeDto? _encontrado;
     private string? _erro;
 
-    /// <summary>Só consulta a elegibilidade; o benefício é consumido no pagamento.</summary>
-    private async Task ValidarAsync()
+    // Elegível: avança até Benefício; não elegível: para em Localização
+    private bool EtapaConcluida(int indice) => _encontrado is { } encontrado && (encontrado.Elegivel ? indice < 4 : indice < 2);
+
+    private async Task LocalizarAsync()
     {
         var resultado = await CasosDeUso.ExecutarAsync((ValidarAtendimentoManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, _numero)));
-        (_resultado, _erro) = (resultado.Dados, resultado.Erro);
+        _encontrado = resultado.Dados;
+        _erro = resultado.Sucesso ? null : $"{resultado.Erro} Tente ATD-48291.";
     }
+
+    private void NovaValidacao() => (_numero, _encontrado, _erro) = ("", null, null);
 }

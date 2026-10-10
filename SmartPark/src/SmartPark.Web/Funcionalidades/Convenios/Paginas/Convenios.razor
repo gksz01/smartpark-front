@@ -8,29 +8,43 @@
 @inject SessaoUsuario Sessao
 @inject ExecutorCasosDeUso CasosDeUso
 
-<PageTitle>Convênios · SmartPark</PageTitle>
+<PageTitle>Convênio médico · SmartPark</PageTitle>
 
 <PaginaProtegida Permissao="Permissao.ConvenioMedico" Recurso="Recurso.ConvenioMedico">
-    <CabecalhoPagina Titulo="Convênios" Descricao="O benefício é aplicado no pagamento com a estratégia TarifaComConvenio.">
-        <button type="button" class="botao" @onclick="AbrirNovo">Novo convênio</button>
-    </CabecalhoPagina>
+    <div class="admin-page">
+        <CabecalhoPagina Sobretitulo="Módulo exclusivo do Hospital" Titulo="Convênio médico" Descricao="Valide o benefício de estacionamento associado a um atendimento.">
+            <span class="status status-success"><Icone Nome="Stethoscope" Tamanho="14" /> Hospital</span>
+        </CabecalhoPagina>
+        <InfoVariacao>
+            O módulo está separado do núcleo e só é ativado pelo recurso Convênio médico (menu, rota, tela e casos de uso). Convênios e atendimentos
+            vêm do banco; a elegibilidade é decidida pela classe Atendimento e a descrição do benefício pela classe Convenio.
+        </InfoVariacao>
 
-    <ValidacaoAtendimento />
+        <ValidacaoAtendimento />
 
-    <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
+        <section class="content-section">
+            <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
+            <Cartao>
+                <div class="table-toolbar">
+                    <div><h2>Convênios cadastrados</h2><p>@((_convenios ?? []).Count) convênios · com atendimentos vinculados não podem ser excluídos</p></div>
+                    <button type="button" class="button button-primary" @onclick="AbrirNovo"><Icone Nome="Plus" Tamanho="17" /> Novo convênio</button>
+                </div>
+                <TabelaDados Itens="_convenios" Colunas="5" MensagemVazia="Nenhum convênio cadastrado.">
+                    <Cabecalho><th>Convênio</th><th>Benefício</th><th>Atendimentos</th><th>Situação</th><th>Ações</th></Cabecalho>
+                    <Linha Context="convenio">
+                        <td><strong>@convenio.Nome</strong></td>
+                        <td>@convenio.Beneficio</td>
+                        <td>@convenio.QuantidadeAtendimentos</td>
+                        <td><Etiqueta Texto="@(convenio.Ativo ? "Ativo" : "Inativo")" Tom="@CoresStatus.DeAtivo(convenio.Ativo)" /></td>
+                        <td><AcoesLinha Rotulo="@convenio.Nome" DescricaoExclusao="Somente convênios sem atendimentos vinculados podem ser excluídos."
+                                        AoEditar="() => AbrirEdicao(convenio)" AoExcluir="() => ExcluirAsync(convenio)" /></td>
+                    </Linha>
+                </TabelaDados>
+            </Cartao>
+        </section>
+    </div>
 
-    <TabelaDados Itens="_convenios" MensagemVazia="Nenhum convênio cadastrado.">
-        <Cabecalho><th>Nome</th><th>Benefício</th><th>Atendimentos</th><th>Situação</th><th></th></Cabecalho>
-        <Linha Context="convenio">
-            <td>@convenio.Nome</td>
-            <td>@convenio.Beneficio</td>
-            <td>@convenio.QuantidadeAtendimentos</td>
-            <td><Etiqueta Texto="@(convenio.Ativo ? "Ativo" : "Inativo")" Tom="@CoresStatus.DeAtivo(convenio.Ativo)" /></td>
-            <td><AcoesLinha Rotulo="registro" AoEditar="() => AbrirEdicao(convenio)" AoExcluir="() => ExcluirAsync(convenio)" /></td>
-        </Linha>
-    </TabelaDados>
-
-    <ModalFormulario Aberto="_estado.ModalAberto" Titulo="@(_estado.Editando ? "Editar convênio" : "Novo convênio")"
+    <ModalFormulario Aberto="_estado.ModalAberto" Sobretitulo="Cadastro de convênios" Titulo="@(_estado.Editando ? "Editar convênio" : "Novo convênio")" TextoSalvar="Salvar convênio"
                      Erro="@_estado.ErroFormulario" Salvando="_estado.Salvando" AoSalvar="SalvarAsync" AoFechar="_estado.Fechar">
         <CamposFormulario Campos="Campos" />
     </ModalFormulario>
@@ -44,21 +58,21 @@
     private sealed class Formulario
     {
         public string Nome { get; set; } = "";
-        public TipoBeneficio Tipo { get; set; } = TipoBeneficio.Percentual;
+        public TipoBeneficio Tipo { get; set; } = TipoBeneficio.Isencao;
         public decimal? Valor { get; set; }
         public bool Ativo { get; set; } = true;
 
-        public DadosConvenio ParaDados() => new(Nome, Tipo, (int)(Valor ?? 0), Ativo);
+        public DadosConvenio ParaDados() => new(Nome, Tipo, Tipo == TipoBeneficio.Isencao ? 0 : (int)(Valor ?? 0), Ativo);
     }
 
-    // A isenção não usa valor; nos outros tipos o rótulo diz o que o número significa
+    // O valor só aparece para percentual e horas grátis
     private IReadOnlyList<CampoFormulario> Campos =>
     [
-        CampoFormulario.Texto("Nome", () => _formulario.Nome, valor => _formulario.Nome = valor),
+        CampoFormulario.Texto("Nome", () => _formulario.Nome, valor => _formulario.Nome = valor, "Ex.: Saúde Plena"),
         CampoFormulario.Selecao("Tipo de benefício", () => _formulario.Tipo, valor => _formulario.Tipo = valor, Enum.GetValues<TipoBeneficio>()),
-        CampoFormulario.Numero(_formulario.Tipo == TipoBeneficio.Percentual ? "Desconto (%)" : "Horas grátis", () => _formulario.Valor, valor => _formulario.Valor = valor)
+        CampoFormulario.Numero(_formulario.Tipo == TipoBeneficio.Percentual ? "Percentual de desconto (%)" : "Horas grátis", () => _formulario.Valor, valor => _formulario.Valor = valor)
             with { Visivel = () => _formulario.Tipo != TipoBeneficio.Isencao },
-        CampoFormulario.Booleano("Convênio ativo", () => _formulario.Ativo, valor => _formulario.Ativo = valor),
+        CampoFormulario.Booleano("Situação", () => _formulario.Ativo, valor => _formulario.Ativo = valor),
     ];
 
     protected override Task OnInitializedAsync() => CarregarAsync();
@@ -86,15 +100,17 @@
     private async Task SalvarAsync()
     {
         _estado.Salvando = true;
+        var editando = _estado.Editando;
         var resultado = _estado.IdEditando is int id
             ? await CasosDeUso.ExecutarAsync((AtualizarConvenioManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, id, _formulario.ParaDados())))
             : await CasosDeUso.ExecutarAsync((CriarConvenioManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, _formulario.ParaDados())));
-        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, "Convênio salvo.")) await CarregarAsync();
+        var mensagem = resultado.Dados is { } convenio ? $"Convênio {convenio.Nome} {(editando ? "atualizado" : "cadastrado")} com sucesso." : "";
+        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, mensagem)) await CarregarAsync();
     }
 
     private async Task ExcluirAsync(ConvenioDto convenio)
     {
         var resultado = await CasosDeUso.ExecutarAsync((ExcluirConvenioManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, convenio.Id)));
-        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, $"Convênio {convenio.Nome} excluído.")) await CarregarAsync();
+        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, "Convênio excluído.")) await CarregarAsync();
     }
 }

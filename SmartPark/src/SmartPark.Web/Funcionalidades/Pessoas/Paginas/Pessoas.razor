@@ -10,33 +10,54 @@
 <PageTitle>Pessoas · SmartPark</PageTitle>
 
 <PaginaProtegida Permissao="Permissao.Usuarios">
-    <CabecalhoPagina Titulo="Pessoas" Descricao="Os tipos e perfis disponíveis dependem do cliente.">
-        <button type="button" class="botao" @onclick="AbrirNovo">Nova pessoa</button>
-    </CabecalhoPagina>
+    <div class="admin-page">
+        <CabecalhoPagina Sobretitulo="Cadastro de pessoas" Titulo="Pessoas" Descricao="@($"Pessoas autorizadas a utilizar o estacionamento de {Sessao.Tenant!.Nome}.")">
+            <button type="button" class="button button-primary" @onclick="AbrirNovo"><Icone Nome="Plus" Tamanho="17" /> Nova pessoa</button>
+        </CabecalhoPagina>
+        <InfoVariacao>
+            Os tipos de pessoa vêm de TiposPessoa e os perfis de PerfisPermitidos do tenant: pacientes e acompanhantes no Hospital,
+            moradores e visitantes no Condomínio, funcionários e visitantes na Empresa, motoristas e funcionários no Shopping.
+        </InfoVariacao>
+        <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
 
-    <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
+        <Cartao>
+            <div class="table-toolbar">
+                <div><h2>Pessoas cadastradas</h2><p>@Visiveis.Count registros visíveis</p></div>
+                <div class="filter-selects">
+                    <select aria-label="Filtrar por tipo" value="@_filtroTipo" @onchange="evento => _filtroTipo = evento.Value?.ToString() ?? TodosOsTipos">
+                        <option value="@TodosOsTipos">Todos os tipos</option>
+                        @foreach (var tipo in Sessao.Tenant!.TiposPessoa)
+                        {
+                            <option value="@tipo">@Rotulos.De(tipo)</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <TabelaDados Itens="_pessoas is null ? null : Visiveis" Colunas="5" MensagemVazia="Nenhuma pessoa cadastrada.">
+                <Cabecalho><th>Nome</th><th>Tipo</th><th>Perfil</th><th>Situação</th><th>Ações</th></Cabecalho>
+                <Linha Context="pessoa">
+                    <td><div><strong>@pessoa.Nome</strong><small class="table-subtitle">@pessoa.Documento</small></div></td>
+                    <td><Etiqueta Texto="@Rotulos.De(pessoa.Tipo)" Tom="@TomDoTipo(pessoa)" /></td>
+                    <td>@Rotulos.De(pessoa.Perfil)</td>
+                    <td><Etiqueta Texto="@(pessoa.Ativo ? "Ativo" : "Inativo")" Tom="@CoresStatus.DeAtivo(pessoa.Ativo)" /></td>
+                    <td><AcoesLinha Rotulo="@pessoa.Nome" DescricaoExclusao="O cadastro será removido deste cliente." AoEditar="() => AbrirEdicao(pessoa)" AoExcluir="() => ExcluirAsync(pessoa)" /></td>
+                </Linha>
+            </TabelaDados>
+        </Cartao>
+    </div>
 
-    <TabelaDados Itens="_pessoas" MensagemVazia="Nenhuma pessoa cadastrada.">
-        <Cabecalho><th>Nome</th><th>Documento</th><th>Tipo</th><th>Perfil</th><th>Situação</th><th></th></Cabecalho>
-        <Linha Context="pessoa">
-            <td>@pessoa.Nome</td>
-            <td>@pessoa.Documento</td>
-            <td>@Rotulos.De(pessoa.Tipo)</td>
-            <td>@Rotulos.De(pessoa.Perfil)</td>
-            <td><Etiqueta Texto="@(pessoa.Ativo ? "Ativa" : "Inativa")" Tom="@CoresStatus.DeAtivo(pessoa.Ativo)" /></td>
-            <td><AcoesLinha Rotulo="registro" AoEditar="() => AbrirEdicao(pessoa)" AoExcluir="() => ExcluirAsync(pessoa)" /></td>
-        </Linha>
-    </TabelaDados>
-
-    <ModalFormulario Aberto="_estado.ModalAberto" Titulo="@(_estado.Editando ? "Editar pessoa" : "Nova pessoa")"
+    <ModalFormulario Aberto="_estado.ModalAberto" Sobretitulo="Cadastro de pessoas" Titulo="@(_estado.Editando ? "Editar pessoa" : "Nova pessoa")" TextoSalvar="Salvar pessoa"
                      Erro="@_estado.ErroFormulario" Salvando="_estado.Salvando" AoSalvar="SalvarAsync" AoFechar="_estado.Fechar">
         <CamposFormulario Campos="Campos" />
     </ModalFormulario>
 </PaginaProtegida>
 
 @code {
+    private const string TodosOsTipos = "todos";
+
     private readonly EstadoCrud _estado = new();
     private IReadOnlyList<PessoaDto>? _pessoas;
+    private string _filtroTipo = TodosOsTipos;
     private Formulario _formulario = new();
 
     private sealed class Formulario
@@ -50,21 +71,28 @@
         public DadosPessoa ParaDados() => new(Nome, Documento, Tipo, Perfil, Ativo);
     }
 
+    private IReadOnlyList<PessoaDto> Visiveis =>
+        (_pessoas ?? []).Where(pessoa => _filtroTipo == TodosOsTipos || pessoa.Tipo.ToString() == _filtroTipo).ToList();
+
     // As opções de tipo e perfil vêm da definição do tenant (LPS)
     private IReadOnlyList<CampoFormulario> Campos =>
     [
-        CampoFormulario.Texto("Nome", () => _formulario.Nome, valor => _formulario.Nome = valor),
-        CampoFormulario.Texto("Documento", () => _formulario.Documento, valor => _formulario.Documento = valor, "Ex.: 123.456.789-01"),
+        CampoFormulario.Texto("Nome", () => _formulario.Nome, valor => _formulario.Nome = valor, "Nome completo"),
+        CampoFormulario.Texto("Documento", () => _formulario.Documento, valor => _formulario.Documento = valor, "CPF ou RG"),
         CampoFormulario.Selecao("Tipo", () => _formulario.Tipo, valor => _formulario.Tipo = valor, Sessao.Tenant!.TiposPessoa),
         CampoFormulario.Selecao("Perfil", () => _formulario.Perfil, valor => _formulario.Perfil = valor, Sessao.Tenant!.PerfisPermitidos),
-        CampoFormulario.Booleano("Pessoa ativa", () => _formulario.Ativo, valor => _formulario.Ativo = valor),
+        CampoFormulario.Booleano("Situação", () => _formulario.Ativo, valor => _formulario.Ativo = valor),
     ];
+
+    // O destaque do tipo vem das regras da classe Usuario (EhVisitante, EhPacienteOuAcompanhante)
+    private static string TomDoTipo(PessoaDto pessoa) =>
+        pessoa.EhVisitante ? "warning" : pessoa.EhPacienteOuAcompanhante ? "info" : "neutral";
 
     protected override Task OnInitializedAsync() => CarregarAsync();
 
     private async Task CarregarAsync()
     {
-        if (!Sessao.Conectado) return;
+        if (!Sessao.PodeAcessar(Permissao.Usuarios)) return;
         var resultado = await CasosDeUso.ExecutarAsync((ListarPessoasManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId)));
         if (resultado.Sucesso) _pessoas = resultado.Dados;
         else _estado.InformarErro(resultado.Erro);
@@ -85,15 +113,17 @@
     private async Task SalvarAsync()
     {
         _estado.Salvando = true;
+        var editando = _estado.Editando;
         var resultado = _estado.IdEditando is int id
             ? await CasosDeUso.ExecutarAsync((AtualizarPessoaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, id, _formulario.ParaDados())))
             : await CasosDeUso.ExecutarAsync((CriarPessoaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, _formulario.ParaDados())));
-        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, "Pessoa salva.")) await CarregarAsync();
+        var mensagem = editando ? "Pessoa atualizada com sucesso." : "Pessoa cadastrada com sucesso.";
+        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, mensagem)) await CarregarAsync();
     }
 
     private async Task ExcluirAsync(PessoaDto pessoa)
     {
         var resultado = await CasosDeUso.ExecutarAsync((ExcluirPessoaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, pessoa.Id)));
-        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, $"{pessoa.Nome} excluída.")) await CarregarAsync();
+        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, "Pessoa excluída.")) await CarregarAsync();
     }
 }

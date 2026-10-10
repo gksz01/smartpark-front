@@ -5,7 +5,6 @@ using SmartPark.Dominio.Entidades;
 using SmartPark.Dominio.Enumeradores;
 using SmartPark.Dominio.Excecoes;
 using SmartPark.Dominio.Padroes.Estrategia.Pagamentos;
-using SmartPark.Dominio.Padroes.Estrategia.Tarifas;
 
 namespace SmartPark.Aplicacao.Pagamentos.Criar;
 
@@ -15,13 +14,9 @@ namespace SmartPark.Aplicacao.Pagamentos.Criar;
 /// </summary>
 public sealed class CriarPagamentoManipulador(ISmartParkContexto contexto)
 {
-    private const int DuracaoMaximaHoras = 24;
-
     public async Task<Resultado<PagamentoDto>> ExecutarAsync(CriarPagamentoComando comando, CancellationToken cancellationToken = default)
     {
         if (ValidadorTenant.Validar(comando.TenantId, Recurso.Cobranca) is { } erroTenant) return Resultado<PagamentoDto>.Falha(erroTenant);
-        if (comando.DuracaoHoras is < 1 or > DuracaoMaximaHoras)
-            return Resultado<PagamentoDto>.Falha($"A duração deve ser um número inteiro de 1 a {DuracaoMaximaHoras} horas.");
 
         try
         {
@@ -38,33 +33,20 @@ public sealed class CriarPagamentoManipulador(ISmartParkContexto contexto)
                 if (reserva.VeiculoId != veiculo.Id) return Resultado<PagamentoDto>.Falha("A reserva informada é de outro veículo.");
             }
 
-            // 3. Tarifa ativa, com a Strategy reconstruída do banco
-            var tarifa = await contexto.Tarifas.SingleOrDefaultAsync(item => item.TenantId == comando.TenantId && item.Ativa, cancellationToken);
-            if (tarifa is null) return Resultado<PagamentoDto>.Falha("Não há tarifa ativa neste cliente. Ative uma tarifa antes de cobrar.");
-            var estrategiaTarifa = tarifa.Estrategia;
+            // 3. Valor pela tarifa ativa e, com atendimento elegível, pelo convênio
+            var (calculo, erro) = await CalculoPagamento.CalcularAsync(contexto, comando.TenantId, comando.DuracaoHoras,
+                comando.NumeroAtendimento, rastrearAtendimento: true, cancellationToken);
+            if (calculo is null) return Resultado<PagamentoDto>.Falha(erro!);
 
-            // 4. Convênio (só com ConvenioMedico): a Strategy do convênio é composta sobre a da tarifa
-            Atendimento? atendimento = null;
-            if (!string.IsNullOrWhiteSpace(comando.NumeroAtendimento))
-            {
-                if (ValidadorTenant.Validar(comando.TenantId, Recurso.ConvenioMedico) is { } erroConvenio) return Resultado<PagamentoDto>.Falha(erroConvenio);
-                var numero = comando.NumeroAtendimento.Trim().ToUpperInvariant();
-                atendimento = await contexto.Atendimentos.Include(item => item.Convenio)
-                    .SingleOrDefaultAsync(item => item.TenantId == comando.TenantId && item.Numero == numero, cancellationToken);
-                if (atendimento is null) return Resultado<PagamentoDto>.Falha("Atendimento não localizado.");
-                if (atendimento.MotivoInelegibilidade(DateTime.Now) is { } motivo) return Resultado<PagamentoDto>.Falha(motivo);
-                estrategiaTarifa = new TarifaComConvenio(tarifa.Estrategia, atendimento.Convenio);
-            }
-
-            // 5. Pagamento: a Strategy calcula valor cobrado, detalhe e prefixo do comprovante
-            var pagamento = new Pagamento(0, comando.TenantId, veiculo.Id, comando.DuracaoHoras, tarifa.Calcular(comando.DuracaoHoras),
-                estrategiaTarifa.Calcular(comando.DuracaoHoras), estrategia, comando.ReservaId, atendimento?.Id);
+            // 4. Pagamento: a Strategy calcula valor cobrado, detalhe e prefixo do comprovante
+            var pagamento = new Pagamento(0, comando.TenantId, veiculo.Id, comando.DuracaoHoras, calculo.ValorTarifa, calculo.Valor, estrategia,
+                comando.ReservaId, calculo.Atendimento?.Id);
             pagamento.Pagar();
-            atendimento?.ConsumirBeneficio(DateTime.Now); // impede usar o mesmo benefício de novo
+            calculo.Atendimento?.ConsumirBeneficio(DateTime.Now); // impede usar o mesmo benefício de novo
 
             contexto.Pagamentos.Add(pagamento);
             await contexto.SaveChangesAsync(cancellationToken); // pagamento e benefício consumido: tudo ou nada
-            return Resultado<PagamentoDto>.Ok(PagamentoDto.De(pagamento, veiculo, atendimento?.Numero, atendimento?.Convenio.Nome));
+            return Resultado<PagamentoDto>.Ok(PagamentoDto.De(pagamento, veiculo, calculo.Atendimento?.Numero, calculo.Atendimento?.Convenio.Nome));
         }
         catch (RegraDeNegocioException falha)
         {

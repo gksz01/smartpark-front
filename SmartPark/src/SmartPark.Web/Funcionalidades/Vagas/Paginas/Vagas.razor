@@ -8,40 +8,72 @@
 @inject SessaoUsuario Sessao
 @inject ExecutorCasosDeUso CasosDeUso
 
-<PageTitle>Vagas · SmartPark</PageTitle>
+<PageTitle>Vagas e setores · SmartPark</PageTitle>
 
 <PaginaProtegida Permissao="Permissao.Vagas">
-    <CabecalhoPagina Titulo="Vagas" Descricao="Cada tipo de vaga é criado pelo seu Creator (Factory Method). O sensor simula a chegada e a saída de veículos (Observer).">
-        <button type="button" class="botao" @onclick="AbrirNovo">Nova vaga</button>
-    </CabecalhoPagina>
+    <div class="admin-page">
+        <CabecalhoPagina Sobretitulo="Capacidade operacional" Titulo="Vagas e setores" Descricao="Acompanhe disponibilidade e categorias em uma visão unificada.">
+            <button type="button" class="button button-primary" @onclick="AbrirNovo"><Icone Nome="Plus" Tamanho="17" /> Nova vaga</button>
+        </CabecalhoPagina>
+        <InfoVariacao>
+            A mesma tabela representa todos os clientes. Os tipos oferecidos vêm de TiposVaga (Prioritária no Hospital, Nominal no Condomínio,
+            Restrita na Empresa) e cada tipo é criado pelo seu Creator do Factory Method. "Simular sensor" usa o Observer: o Sensor avisa
+            ObservadorVagaSensor (muda a vaga) e ObservadorNotificacaoSensor (gera a notificação).
+        </InfoVariacao>
+        <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
 
-    <Mensagem Sucesso="@_estado.Sucesso" Erro="@_estado.Erro" />
-    <ListaNotificacoes Itens="_notificacoes" />
+        <div class="space-summary">
+            @foreach (var status in Enum.GetValues<StatusVaga>())
+            {
+                <button type="button" class="@(_filtroStatus == status ? "active" : "")" @onclick="() => _filtroStatus = _filtroStatus == status ? null : status">
+                    <span class="space-dot @status.ToString().ToLowerInvariant()"></span>
+                    <div><strong>@((_vagas ?? []).Count(vaga => vaga.Status == status))</strong><small>@(status)s</small></div>
+                </button>
+            }
+        </div>
 
-    <TabelaDados Itens="_vagas" MensagemVazia="Nenhuma vaga cadastrada.">
-        <Cabecalho><th>Código</th><th>Setor</th><th>Tipo</th><th>Status</th><th>Uso</th><th></th></Cabecalho>
-        <Linha Context="vaga">
-            <td><strong>@vaga.Codigo</strong></td>
-            <td>@vaga.Setor</td>
-            <td>@Rotulos.De(vaga.Tipo)</td>
-            <td><Etiqueta Texto="@vaga.Status.ToString()" Tom="@CoresStatus.De(vaga.Status)" /></td>
-            <td class="detalhe">@vaga.Requisito</td>
-            <td>
-                <AcoesLinha Rotulo="registro" AoEditar="() => AbrirEdicao(vaga)" AoExcluir="() => ExcluirAsync(vaga)">
-                    @if (vaga.Status == StatusVaga.Ocupada)
-                    {
-                        <button type="button" class="botao pequeno secundario" @onclick="() => LerSensorAsync(vaga, TipoEventoSensor.Liberada)">Sensor: saiu</button>
-                    }
-                    else
-                    {
-                        <button type="button" class="botao pequeno secundario" @onclick="() => LerSensorAsync(vaga, TipoEventoSensor.Ocupada)">Sensor: chegou</button>
-                    }
-                </AcoesLinha>
-            </td>
-        </Linha>
-    </TabelaDados>
+        <Cartao>
+            <div class="table-toolbar">
+                <div><h2>Mapa lógico de vagas</h2><p>@Visiveis.Count registros visíveis</p></div>
+                <div class="filter-selects">
+                    <select aria-label="Filtrar por setor" value="@(_filtroSetor ?? "Todos")" @onchange="FiltrarSetor">
+                        <option>Todos</option>
+                        @foreach (var setor in Setores)
+                        {
+                            <option>@setor</option>
+                        }
+                    </select>
+                    <select aria-label="Filtrar por status" value="@(_filtroStatus?.ToString() ?? "Todas")" @onchange="FiltrarStatus">
+                        <option>Todas</option>
+                        @foreach (var status in Enum.GetValues<StatusVaga>())
+                        {
+                            <option>@status</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <TabelaDados Itens="_vagas is null ? null : Visiveis" Colunas="5" MensagemVazia="Nenhuma vaga cadastrada.">
+                <Cabecalho><th>Vaga</th><th>Setor</th><th>Categoria</th><th>Status</th><th>Ações</th></Cabecalho>
+                <Linha Context="vaga">
+                    <td><strong>@vaga.Codigo</strong></td>
+                    <td>Setor @vaga.Setor</td>
+                    <td><div><span class="inline-flex items-center gap-2"><Icone Nome="Car" Tamanho="15" />@Rotulos.De(vaga.Tipo)</span><small class="table-subtitle">@vaga.Requisito</small></div></td>
+                    <td><Etiqueta Texto="@vaga.Status.ToString()" Tom="@CoresStatus.De(vaga.Status)" /></td>
+                    <td>
+                        <AcoesLinha Rotulo="@($"vaga {vaga.Codigo}")" DescricaoExclusao="Somente vagas livres ou bloqueadas podem ser excluídas."
+                                    AoEditar="() => AbrirEdicao(vaga)" AoExcluir="() => ExcluirAsync(vaga)">
+                            @if (vaga.Status != StatusVaga.Bloqueada)
+                            {
+                                <button type="button" class="button button-secondary" @onclick="() => SimularSensorAsync(vaga)" aria-label="@($"Simular sensor na vaga {vaga.Codigo}")"><Icone Nome="Activity" Tamanho="16" /> Simular sensor</button>
+                            }
+                        </AcoesLinha>
+                    </td>
+                </Linha>
+            </TabelaDados>
+        </Cartao>
+    </div>
 
-    <ModalFormulario Aberto="_estado.ModalAberto" Titulo="@(_estado.Editando ? "Editar vaga" : "Nova vaga")"
+    <ModalFormulario Aberto="_estado.ModalAberto" Sobretitulo="Cadastro de vagas" Titulo="@(_estado.Editando ? $"Editar vaga {_formulario.Codigo}" : "Nova vaga")" TextoSalvar="Salvar vaga"
                      Erro="@_estado.ErroFormulario" Salvando="_estado.Salvando" AoSalvar="SalvarAsync" AoFechar="_estado.Fechar">
         <CamposFormulario Campos="Campos" />
     </ModalFormulario>
@@ -50,7 +82,8 @@
 @code {
     private readonly EstadoCrud _estado = new();
     private IReadOnlyList<VagaDto>? _vagas;
-    private IReadOnlyList<string> _notificacoes = [];
+    private StatusVaga? _filtroStatus;
+    private string? _filtroSetor;
     private Formulario _formulario = new();
 
     private sealed class Formulario
@@ -63,20 +96,34 @@
         public DadosVaga ParaDados() => new(Codigo, Setor, Tipo, Status);
     }
 
-    // O tipo só é escolhido na criação: a subclasse da vaga não muda depois
+    private IReadOnlyList<string> Setores => (_vagas ?? []).Select(vaga => vaga.Setor).Distinct().Order().ToList();
+
+    private IReadOnlyList<VagaDto> Visiveis => (_vagas ?? [])
+        .Where(vaga => (_filtroStatus is null || vaga.Status == _filtroStatus) && (_filtroSetor is null || vaga.Setor == _filtroSetor))
+        .ToList();
+
+    // O tipo só é escolhido na criação: a subclasse da vaga (produto do Factory Method) não muda depois
     private IReadOnlyList<CampoFormulario> Campos =>
     [
-        CampoFormulario.Texto("Código", () => _formulario.Codigo, valor => _formulario.Codigo = valor, "Ex.: A-01"),
+        CampoFormulario.Texto("Código", () => _formulario.Codigo, valor => _formulario.Codigo = valor, "Ex.: A-05"),
         CampoFormulario.Texto("Setor", () => _formulario.Setor, valor => _formulario.Setor = valor, "Ex.: A"),
-        CampoFormulario.Selecao("Tipo", () => _formulario.Tipo, valor => _formulario.Tipo = valor, Sessao.Tenant!.TiposVaga) with { Desabilitado = _estado.Editando },
+        CampoFormulario.Selecao("Tipo", () => _formulario.Tipo, valor => _formulario.Tipo = valor, Sessao.Tenant!.TiposVaga)
+            with { Desabilitado = _estado.Editando, Dica = _estado.Editando ? "O tipo é definido na criação da vaga." : null },
         CampoFormulario.Selecao("Status", () => _formulario.Status, valor => _formulario.Status = valor, Enum.GetValues<StatusVaga>()),
     ];
+
+    // "Todos" e "Todas" desligam o filtro
+    private void FiltrarSetor(ChangeEventArgs evento) =>
+        _filtroSetor = evento.Value?.ToString() is { } setor && setor != "Todos" ? setor : null;
+
+    private void FiltrarStatus(ChangeEventArgs evento) =>
+        _filtroStatus = Enum.TryParse<StatusVaga>(evento.Value?.ToString(), out var status) ? status : null;
 
     protected override Task OnInitializedAsync() => CarregarAsync();
 
     private async Task CarregarAsync()
     {
-        if (!Sessao.Conectado) return;
+        if (!Sessao.PodeAcessar(Permissao.Vagas)) return;
         var resultado = await CasosDeUso.ExecutarAsync((ListarVagasManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId)));
         if (resultado.Sucesso) _vagas = resultado.Dados;
         else _estado.InformarErro(resultado.Erro);
@@ -100,19 +147,24 @@
         var resultado = _estado.IdEditando is int id
             ? await CasosDeUso.ExecutarAsync((AtualizarVagaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, id, _formulario.ParaDados())))
             : await CasosDeUso.ExecutarAsync((CriarVagaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, _formulario.ParaDados())));
-        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, "Vaga salva.")) await CarregarAsync();
+        var mensagem = resultado.Dados is { } vaga ? $"Vaga {vaga.Codigo} {(_estado.Editando ? "atualizada" : "cadastrada")} com sucesso." : "";
+        if (_estado.ConcluirFormulario(resultado.Sucesso, resultado.Erro, mensagem)) await CarregarAsync();
     }
 
     private async Task ExcluirAsync(VagaDto vaga)
     {
         var resultado = await CasosDeUso.ExecutarAsync((ExcluirVagaManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, vaga.Id)));
-        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, $"Vaga {vaga.Codigo} excluída.")) await CarregarAsync();
+        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, "Vaga excluída.")) await CarregarAsync();
     }
 
-    private async Task LerSensorAsync(VagaDto vaga, TipoEventoSensor leitura)
+    /// <summary>Vaga ocupada: o sensor detecta a saída; caso contrário, a chegada de um veículo.</summary>
+    private async Task SimularSensorAsync(VagaDto vaga)
     {
+        var leitura = vaga.Status == StatusVaga.Ocupada ? TipoEventoSensor.Liberada : TipoEventoSensor.Ocupada;
         var resultado = await CasosDeUso.ExecutarAsync((SimularSensorManipulador casoDeUso) => casoDeUso.ExecutarAsync(new(Sessao.TenantId, vaga.Id, leitura)));
-        _notificacoes = resultado.Dados?.Notificacoes ?? [];
-        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, $"Sensor da vaga {vaga.Codigo} registrou a leitura.")) await CarregarAsync();
+        var mensagem = resultado.Dados is { } leituraSensor
+            ? string.Join(" ", leituraSensor.Notificacoes) is { Length: > 0 } notificacoes ? notificacoes : $"Vaga {leituraSensor.Vaga.Codigo}: {leituraSensor.Vaga.Status}."
+            : "";
+        if (_estado.ConcluirAcao(resultado.Sucesso, resultado.Erro, mensagem)) await CarregarAsync();
     }
 }

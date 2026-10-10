@@ -32,6 +32,15 @@ public static class Rotulos
         [Recurso.WhiteLabel] = "White-label",
     };
 
+    /// <summary>Como o identificador do acesso é chamado em cada método (rótulo e exemplo do campo).</summary>
+    public static (string Rotulo, string Exemplo) IdentificadorDe(MetodoAcesso metodo) => metodo switch
+    {
+        MetodoAcesso.Lpr => ("Placa / LPR", "Ex.: ABC1D23"),
+        MetodoAcesso.QrCode => ("Código QR", "Ex.: QR-4839-221"),
+        MetodoAcesso.Rfid => ("Tag RFID", "Ex.: RF-10982"),
+        _ => ("Credencial", "Informe a credencial"),
+    };
+
     public static string De(Enum valor) => Especiais.TryGetValue(valor, out var rotulo) ? rotulo : valor.ToString();
 
     /// <summary>Ex.: [Comum, PCD] → "Comum, PCD" (usado nas mensagens "Use: ...").</summary>
